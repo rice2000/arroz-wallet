@@ -3,14 +3,14 @@
 {% block content %}
 
 <div class="d-flex align-items-center gap-2 mb-3">
-  <h4 class="mb-0">Send XLM</h4>
+  <h4 class="mb-0">Send</h4>
   <span class="badge network-badge-{{ network }} text-uppercase">{{ network_name }}</span>
 </div>
 
 {% if network == 'mainnet' %}
   <div class="alert alert-danger d-flex align-items-start gap-2">
     <strong>Mainnet:</strong>
-    <span>You are sending real XLM. Transactions are irreversible.</span>
+    <span>You are sending real assets. Transactions are irreversible.</span>
   </div>
 {% endif %}
 
@@ -31,7 +31,22 @@
       </div>
 
       <div class="mb-3">
-        <label for="amount" class="form-label">Amount (XLM)</label>
+        <label for="asset" class="form-label">Asset</label>
+        <select class="form-select" id="asset" name="asset">
+          <option value="native">XLM (native)</option>
+          {% for a in tracked_assets %}
+            <option value="{{ a.code }}:{{ a.issuer }}">{{ a.code }}</option>
+          {% endfor %}
+        </select>
+        {% if not tracked_assets %}
+          <div class="form-text">
+            Only XLM available. <a href="/assets">Add tracked assets</a> to send other tokens.
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        <label for="amount" class="form-label">Amount</label>
         <input type="number" class="form-control" id="amount" name="amount"
                placeholder="0.0000000" step="0.0000001" min="0.0000001" required>
       </div>

@@ -31,9 +31,12 @@
     </div>
   </div>
 
-  <!-- Balance card -->
+  <!-- Balances card -->
   <div class="card mb-3">
-    <div class="card-header text-muted small">XLM Balance</div>
+    <div class="card-header text-muted small d-flex justify-content-between align-items-center">
+      <span>Balances</span>
+      <a href="/assets" class="text-decoration-none small">Manage Assets</a>
+    </div>
     <div class="card-body">
       {% if not_funded %}
         <p class="text-muted mb-2">
@@ -51,18 +54,33 @@
         {% endif %}
       {% elif error %}
         <div class="text-danger small">{{ error }}</div>
-      {% elif balance is none %}
+      {% elif not balances %}
         <span class="text-muted">—</span>
       {% else %}
-        <span class="fs-3 fw-semibold">{{ balance }}</span>
-        <span class="text-muted ms-1">XLM</span>
+        <table class="table table-sm mb-0">
+          <thead>
+            <tr>
+              <th class="text-muted fw-normal small">Asset</th>
+              <th class="text-muted fw-normal small text-end">Balance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for b in balances %}
+            <tr>
+              <td class="fw-semibold">{{ b.asset }}</td>
+              <td class="text-end font-monospace">{{ b.balance }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       {% endif %}
     </div>
   </div>
 
   <!-- Quick actions -->
   <div class="d-flex gap-2">
-    <a href="/send" class="btn btn-primary">Send XLM</a>
+    <a href="/send" class="btn btn-primary">Send</a>
+    <a href="/assets" class="btn btn-outline-secondary">Manage Assets</a>
     <a href="/history" class="btn btn-outline-secondary">Transaction History</a>
   </div>
 

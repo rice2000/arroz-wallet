@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Arroz Wallet — A command-line Stellar wallet supporting testnet and mainnet.
-Uses the stellar-sdk library to interact with Stellar via the Horizon API.
+Uses Stellar RPC (SorobanServer) for balance queries and transaction submission.
 The secret key is encrypted with a user-chosen password and never stored in plaintext.
 """
 
@@ -13,7 +13,7 @@ import requests
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
-from stellar_sdk import Keypair, Server, Network, TransactionBuilder, Asset
+from stellar_sdk import Keypair, Server, Network, TransactionBuilder, Asset, Account, SorobanServer, xdr
 
 # ─── Configuration ────────────────────────────────────────────────────────────
 
@@ -27,19 +27,22 @@ NETWORKS = {
     "testnet": {
         "name": "Testnet",
         "horizon_url": "https://horizon-testnet.stellar.org",
+        "rpc_url": "https://soroban-testnet.stellar.org",
         "passphrase": Network.TESTNET_NETWORK_PASSPHRASE,
         "friendbot_url": "https://friendbot.stellar.org",
     },
     "mainnet": {
         "name": "Mainnet",
         "horizon_url": "https://horizon.stellar.org",
+        "rpc_url": "https://mainnet.sorobanrpc.com",
         "passphrase": Network.PUBLIC_NETWORK_PASSPHRASE,
         "friendbot_url": None,  # Friendbot does not exist on mainnet
     },
 }
 
 # These are set at startup by select_network() and used throughout
-server = None
+server = None           # Horizon — history only (TODO: migrate when Portfolio APIs are available)
+soroban_server = None   # Stellar RPC — balance queries and transaction submission
 NETWORK_PASSPHRASE = None
 NETWORK_NAME = None
 FRIENDBOT_URL = None
@@ -50,9 +53,9 @@ FRIENDBOT_URL = None
 def select_network():
     """
     Ask the user to choose testnet or mainnet at startup.
-    Sets the global server, passphrase, network name, and Friendbot URL.
+    Sets the global server, soroban_server, passphrase, network name, and Friendbot URL.
     """
-    global server, NETWORK_PASSPHRASE, NETWORK_NAME, FRIENDBOT_URL
+    global server, soroban_server, NETWORK_PASSPHRASE, NETWORK_NAME, FRIENDBOT_URL
 
     print("\nSelect network:")
     print("  1. Testnet  (safe for testing — no real XLM)")
@@ -76,6 +79,7 @@ def select_network():
             print("Please enter 1 or 2.")
 
     server = Server(cfg["horizon_url"])
+    soroban_server = SorobanServer(cfg["rpc_url"])
     NETWORK_PASSPHRASE = cfg["passphrase"]
     NETWORK_NAME = cfg["name"]
     FRIENDBOT_URL = cfg["friendbot_url"]
@@ -169,6 +173,7 @@ def save_wallet(public_key: str, secret_key: str, password: str):
     Encrypt the secret key and write the wallet to wallet.json.
     Only the public key, the encrypted secret, and the salt are stored —
     the plaintext secret key never touches disk.
+    Tracked assets start empty for a new wallet.
     """
     encrypted_secret, salt = _encrypt_secret(secret_key, password)
     with open(WALLET_FILE, "w") as f:
@@ -176,7 +181,139 @@ def save_wallet(public_key: str, secret_key: str, password: str):
             "public_key": public_key,
             "encrypted_secret": encrypted_secret,
             "salt": salt,
+            "tracked_assets": [],
         }, f, indent=2)
+
+
+# ─── Tracked Asset Management ─────────────────────────────────────────────────
+
+def load_tracked_assets() -> list:
+    """Return the list of tracked assets from wallet.json."""
+    if not os.path.exists(WALLET_FILE):
+        return []
+    with open(WALLET_FILE, "r") as f:
+        data = json.load(f)
+    return data.get("tracked_assets", [])
+
+
+def add_tracked_asset(code: str, issuer: str):
+    """Add an asset to the tracked list in wallet.json (no-op if already present)."""
+    if not os.path.exists(WALLET_FILE):
+        return
+    with open(WALLET_FILE, "r") as f:
+        data = json.load(f)
+    tracked = data.get("tracked_assets", [])
+    for asset in tracked:
+        if asset["code"] == code and asset["issuer"] == issuer:
+            return  # Already tracked
+    tracked.append({"code": code, "issuer": issuer})
+    data["tracked_assets"] = tracked
+    with open(WALLET_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+def remove_tracked_asset(code: str, issuer: str):
+    """Remove an asset from the tracked list in wallet.json."""
+    if not os.path.exists(WALLET_FILE):
+        return
+    with open(WALLET_FILE, "r") as f:
+        data = json.load(f)
+    tracked = data.get("tracked_assets", [])
+    data["tracked_assets"] = [
+        a for a in tracked if not (a["code"] == code and a["issuer"] == issuer)
+    ]
+    with open(WALLET_FILE, "w") as f:
+        json.dump(data, f, indent=2)
+
+
+# ─── RPC Balance Queries ───────────────────────────────────────────────────────
+
+def get_xlm_balance(public_key: str):
+    """
+    Fetch native XLM balance via Stellar RPC (getLedgerEntries).
+    Returns balance as a string (e.g. "9999.9999900") or None if account not found.
+    """
+    key = xdr.LedgerKey(
+        type=xdr.LedgerEntryType.ACCOUNT,
+        account=xdr.LedgerKeyAccount(
+            account_id=Keypair.from_public_key(public_key).xdr_account_id()
+        ),
+    )
+    resp = soroban_server.get_ledger_entries([key])
+    if not resp.entries:
+        return None  # Account not funded / doesn't exist
+    account_data = xdr.LedgerEntryData.from_xdr(resp.entries[0].xdr).account
+    return str(account_data.balance.int64 / 10_000_000)
+
+
+def get_trustline_balance(public_key: str, asset_code: str, asset_issuer: str):
+    """
+    Fetch a specific trustline balance via Stellar RPC (getLedgerEntries).
+    Returns balance as a string or None if trustline not found.
+
+    Note: Stellar RPC requires knowing the asset upfront — it cannot enumerate
+    all trustlines for an account. This is why we use tracked_assets in wallet.json.
+    """
+    asset = Asset(asset_code, asset_issuer)
+    # TrustLineAsset has the same XDR encoding as Asset for alphanum4/alphanum12
+    trust_line_asset = xdr.TrustLineAsset.from_xdr(asset.to_xdr_object().to_xdr())
+    key = xdr.LedgerKey(
+        type=xdr.LedgerEntryType.TRUSTLINE,
+        trust_line=xdr.LedgerKeyTrustLine(
+            account_id=Keypair.from_public_key(public_key).xdr_account_id(),
+            asset=trust_line_asset,
+        ),
+    )
+    resp = soroban_server.get_ledger_entries([key])
+    if not resp.entries:
+        return None
+    trustline_data = xdr.LedgerEntryData.from_xdr(resp.entries[0].xdr).trust_line
+    return str(trustline_data.balance.int64 / 10_000_000)
+
+
+def get_all_balances(public_key: str) -> list:
+    """
+    Fetch XLM plus all tracked asset balances via Stellar RPC.
+    Returns a list of dicts: [{"asset": "XLM", "balance": "..."}, ...]
+    Returns an empty list if the account is not funded.
+    """
+    xlm = get_xlm_balance(public_key)
+    if xlm is None:
+        return []  # Account not funded
+
+    balances = [{"asset": "XLM", "balance": xlm}]
+
+    for tracked in load_tracked_assets():
+        code = tracked["code"]
+        issuer = tracked["issuer"]
+        bal = get_trustline_balance(public_key, code, issuer)
+        balances.append({
+            "asset": code,
+            "balance": bal if bal is not None else "0.0000000",
+            "issuer": issuer,
+        })
+
+    return balances
+
+
+def load_account_rpc(public_key: str) -> Account:
+    """
+    Load the account's current sequence number via Stellar RPC.
+    Returns a stellar_sdk.Account object suitable for TransactionBuilder.
+    Raises ValueError if the account is not funded.
+    """
+    key = xdr.LedgerKey(
+        type=xdr.LedgerEntryType.ACCOUNT,
+        account=xdr.LedgerKeyAccount(
+            account_id=Keypair.from_public_key(public_key).xdr_account_id()
+        ),
+    )
+    resp = soroban_server.get_ledger_entries([key])
+    if not resp.entries:
+        raise ValueError(f"Account {public_key} not found on the network — is it funded?")
+    account_data = xdr.LedgerEntryData.from_xdr(resp.entries[0].xdr).account
+    seq_num = account_data.seq_num.sequence_number.int64
+    return Account(public_key, seq_num)
 
 
 # ─── Feature: Create Wallet ────────────────────────────────────────────────────
@@ -248,8 +385,7 @@ def show_address():
 
 def check_balance():
     """
-    Query the Horizon API for the account's balances.
-    A Stellar account can hold XLM (native) plus any number of other assets.
+    Query balances via Stellar RPC — XLM plus any tracked assets.
     No password needed — the public key is enough to query balances.
     """
     public_key = load_wallet()
@@ -257,36 +393,59 @@ def check_balance():
         return
 
     try:
-        account = server.accounts().account_id(public_key).call()
+        balances = get_all_balances(public_key)
+        if not balances:
+            print(f"\nAccount {public_key} has not been funded yet.")
+            return
         print(f"\nBalances for {public_key}:")
-        for balance in account["balances"]:
-            # Native XLM has no asset_code field; everything else does
-            asset_name = balance.get("asset_code", "XLM")
-            print(f"  {asset_name:10s}  {balance['balance']}")
+        for b in balances:
+            print(f"  {b['asset']:10s}  {b['balance']}")
+        tracked = load_tracked_assets()
+        if not tracked:
+            print("\n  (Add tracked assets with 'Manage Assets' to see non-XLM balances.)")
     except Exception as e:
         print(f"Error fetching balance: {e}")
 
 
 # ─── Feature: Send Payment ─────────────────────────────────────────────────────
 
-def send_payment():
+def send_payment(asset_code=None, asset_issuer=None):
     """
-    Send XLM from the loaded wallet to another Stellar address.
-    Prompts for the wallet password to decrypt the secret key for signing.
+    Send a payment from the loaded wallet to another Stellar address.
+    Submits via Stellar RPC (send_transaction).
+    Pass asset_code + asset_issuer for non-XLM assets; leave None for XLM.
     """
     public_key = load_wallet()
     if not public_key:
         return
 
     destination = input("Destination public key: ").strip()
-    amount = input("Amount of XLM to send: ").strip()
+
+    # If no asset specified, offer a menu
+    if asset_code is None:
+        tracked = load_tracked_assets()
+        if tracked:
+            print("\nAsset to send:")
+            print("  1. XLM (native)")
+            for i, a in enumerate(tracked, 2):
+                print(f"  {i}. {a['code']}")
+            choice = input("Choose asset (default 1): ").strip() or "1"
+            if choice != "1":
+                idx = int(choice) - 2
+                if 0 <= idx < len(tracked):
+                    asset_code = tracked[idx]["code"]
+                    asset_issuer = tracked[idx]["issuer"]
+
+    asset = Asset(asset_code, asset_issuer) if asset_code else Asset.native()
+    asset_label = asset_code if asset_code else "XLM"
+    amount = input(f"Amount of {asset_label} to send: ").strip()
 
     # Extra confirmation on mainnet — real XLM, irreversible
     if NETWORK_NAME == "Mainnet":
         print(f"\n  Network    : {NETWORK_NAME}")
         print(f"  From       : {public_key}")
         print(f"  To         : {destination}")
-        print(f"  Amount     : {amount} XLM")
+        print(f"  Amount     : {amount} {asset_label}")
         confirm = input("\n  Type 'send' to confirm this mainnet transaction: ").strip().lower()
         if confirm != "send":
             print("Cancelled.")
@@ -298,8 +457,8 @@ def send_payment():
         return
 
     try:
-        # Load the sender's account details (sequence number, etc.) from the network
-        source_account = server.load_account(public_key)
+        # Load account sequence number via RPC
+        source_account = load_account_rpc(public_key)
 
         # Build the transaction with a single payment operation
         transaction = (
@@ -310,7 +469,7 @@ def send_payment():
             )
             .append_payment_op(
                 destination=destination,
-                asset=Asset.native(),  # Asset.native() = XLM
+                asset=asset,
                 amount=amount,
             )
             .set_timeout(30)  # transaction expires after 30 seconds
@@ -321,10 +480,11 @@ def send_payment():
         keypair = Keypair.from_secret(secret_key)
         transaction.sign(keypair)
 
-        # Submit the signed transaction to the Horizon API
-        response = server.submit_transaction(transaction)
-        print("\nPayment sent successfully!")
-        print(f"  Transaction hash: {response['hash']}")
+        # Submit via Stellar RPC
+        response = soroban_server.send_transaction(transaction)
+        print("\nPayment submitted!")
+        print(f"  Transaction hash: {response.hash}")
+        print(f"  Status: {response.status}")
 
     except Exception as e:
         print(f"Error sending payment: {e}")
@@ -335,7 +495,8 @@ def send_payment():
 def view_history():
     """
     Fetch and display the 10 most recent transactions for the loaded wallet.
-    No password needed — the public key is enough to query history.
+    Uses Horizon API — Stellar RPC has no account-filtered history endpoint.
+    TODO: migrate when Stellar Portfolio APIs are available.
     """
     public_key = load_wallet()
     if not public_key:
@@ -383,9 +544,42 @@ def show_menu():
     print("║  3. Check balance        ║")
     print("║  4. Send payment         ║")
     print("║  5. Transaction history  ║")
-    print("║  6. Exit                 ║")
+    print("║  6. Manage tracked assets║")
+    print("║  7. Exit                 ║")
     print("╚══════════════════════════╝")
-    return input("Choose an option (1-6): ").strip()
+    return input("Choose an option (1-7): ").strip()
+
+
+def manage_assets_cli():
+    """CLI interface for adding/removing tracked assets."""
+    tracked = load_tracked_assets()
+    print("\nTracked assets (non-XLM balances to display):")
+    if not tracked:
+        print("  (none)")
+    else:
+        for i, a in enumerate(tracked, 1):
+            print(f"  {i}. {a['code']}  ({a['issuer']})")
+
+    print("\n  a. Add asset")
+    print("  r. Remove asset")
+    print("  q. Back to menu")
+    choice = input("Choice: ").strip().lower()
+
+    if choice == "a":
+        code = input("Asset code (e.g. USDC): ").strip().upper()
+        issuer = input("Issuer public key: ").strip()
+        if code and issuer:
+            add_tracked_asset(code, issuer)
+            print(f"Added {code}.")
+    elif choice == "r" and tracked:
+        num = input("Remove asset number: ").strip()
+        try:
+            idx = int(num) - 1
+            a = tracked[idx]
+            remove_tracked_asset(a["code"], a["issuer"])
+            print(f"Removed {a['code']}.")
+        except (ValueError, IndexError):
+            print("Invalid selection.")
 
 
 # ─── Entry Point ───────────────────────────────────────────────────────────────
@@ -410,10 +604,12 @@ def main():
         elif choice == "5":
             view_history()
         elif choice == "6":
+            manage_assets_cli()
+        elif choice == "7":
             print("Goodbye!")
             break
         else:
-            print("Invalid choice. Please enter a number from 1 to 6.")
+            print("Invalid choice. Please enter a number from 1 to 7.")
 
 
 if __name__ == "__main__":

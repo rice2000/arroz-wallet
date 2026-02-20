@@ -10,7 +10,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from cryptography.fernet import InvalidToken
-from stellar_sdk import Keypair, Server, TransactionBuilder, Asset
+from stellar_sdk import Keypair, Server, SorobanServer, TransactionBuilder, Asset, Account
 from stellar_sdk.exceptions import NotFoundError
 
 import wallet as w
@@ -31,7 +31,9 @@ def get_network_config():
     """
     network = session.get("network", "testnet")
     cfg = w.NETWORKS[network]
+    # TODO: Remove Horizon server when history is migrated to Stellar Portfolio APIs
     w.server = Server(cfg["horizon_url"])
+    w.soroban_server = SorobanServer(cfg["rpc_url"])
     w.NETWORK_PASSPHRASE = cfg["passphrase"]
     w.NETWORK_NAME = cfg["name"]
     w.FRIENDBOT_URL = cfg["friendbot_url"]
@@ -53,26 +55,22 @@ def read_public_key():
 def index():
     network = get_network_config()
     public_key = read_public_key()
-    balance = None
+    balances = []
     error = None
-
     not_funded = False
+
     if public_key:
         try:
-            account = w.server.accounts().account_id(public_key).call()
-            for b in account["balances"]:
-                if b.get("asset_type") == "native":
-                    balance = b["balance"]
-                    break
-        except NotFoundError:
-            not_funded = True
+            balances = w.get_all_balances(public_key)
+            if not balances:
+                not_funded = True
         except Exception as e:
             error = str(e)
 
     return render_template(
         "index.html",
         public_key=public_key,
-        balance=balance,
+        balances=balances,
         error=error,
         not_funded=not_funded,
         network=network,
@@ -162,18 +160,28 @@ def send():
         return redirect(url_for("create"))
 
     public_key = read_public_key()
+    tracked_assets = w.load_tracked_assets()
 
     if request.method == "POST":
         destination = request.form.get("destination", "").strip()
         amount = request.form.get("amount", "").strip()
         password = request.form.get("password", "")
+        # "native" or "CODE:ISSUER"
+        asset_value = request.form.get("asset", "native")
 
         if not destination or not amount or not password:
             flash("All fields are required.", "danger")
             return render_template(
                 "send.html", network=network, network_name=w.NETWORK_NAME,
-                public_key=public_key,
+                public_key=public_key, tracked_assets=tracked_assets,
             )
+
+        # Parse the asset selection
+        if asset_value == "native":
+            asset = Asset.native()
+        else:
+            code, issuer = asset_value.split(":", 1)
+            asset = Asset(code, issuer)
 
         # Decrypt the secret key — password is never stored anywhere.
         try:
@@ -186,18 +194,18 @@ def send():
             flash("Incorrect password.", "danger")
             return render_template(
                 "send.html", network=network, network_name=w.NETWORK_NAME,
-                public_key=public_key,
+                public_key=public_key, tracked_assets=tracked_assets,
             )
         except Exception as e:
             flash(f"Error loading wallet: {e}", "danger")
             return render_template(
                 "send.html", network=network, network_name=w.NETWORK_NAME,
-                public_key=public_key,
+                public_key=public_key, tracked_assets=tracked_assets,
             )
 
-        # Build, sign, and submit the transaction.
+        # Build, sign, and submit via Stellar RPC.
         try:
-            source_account = w.server.load_account(public_key)
+            source_account = w.load_account_rpc(public_key)
             transaction = (
                 TransactionBuilder(
                     source_account=source_account,
@@ -206,7 +214,7 @@ def send():
                 )
                 .append_payment_op(
                     destination=destination,
-                    asset=Asset.native(),
+                    asset=asset,
                     amount=amount,
                 )
                 .set_timeout(30)
@@ -214,21 +222,63 @@ def send():
             )
             keypair = Keypair.from_secret(secret_key)
             transaction.sign(keypair)
-            response = w.server.submit_transaction(transaction)
-            flash(f"Payment sent! Transaction hash: {response['hash']}", "success")
-            return redirect(url_for("index"))
+            response = w.soroban_server.send_transaction(transaction)
+            if response.status == "ERROR":
+                flash(f"Transaction failed: {response.error_result_xdr}", "danger")
+            else:
+                flash(
+                    f"Payment sent! Transaction hash: {response.hash}",
+                    "success",
+                )
+                return redirect(url_for("index"))
         except Exception as e:
             flash(f"Error sending payment: {e}", "danger")
-            return render_template(
-                "send.html", network=network, network_name=w.NETWORK_NAME,
-                public_key=public_key,
-            )
+
+        return render_template(
+            "send.html", network=network, network_name=w.NETWORK_NAME,
+            public_key=public_key, tracked_assets=tracked_assets,
+        )
 
     return render_template(
         "send.html",
         network=network,
         network_name=w.NETWORK_NAME,
         public_key=public_key,
+        tracked_assets=tracked_assets,
+    )
+
+
+@app.route("/assets", methods=["GET", "POST"])
+def assets():
+    network = get_network_config()
+
+    if not os.path.exists(w.WALLET_FILE):
+        flash("No wallet found. Please create one first.", "warning")
+        return redirect(url_for("create"))
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        code = request.form.get("code", "").strip().upper()
+        issuer = request.form.get("issuer", "").strip()
+
+        if action == "add":
+            if not code or not issuer:
+                flash("Asset code and issuer address are both required.", "danger")
+            else:
+                w.add_tracked_asset(code, issuer)
+                flash(f"{code} added to tracked assets.", "success")
+        elif action == "remove":
+            w.remove_tracked_asset(code, issuer)
+            flash(f"{code} removed from tracked assets.", "success")
+
+        return redirect(url_for("assets"))
+
+    tracked = w.load_tracked_assets()
+    return render_template(
+        "assets.html",
+        tracked_assets=tracked,
+        network=network,
+        network_name=w.NETWORK_NAME,
     )
 
 
@@ -244,6 +294,8 @@ def history():
     transactions = []
     error = None
 
+    # TODO: migrate to Stellar Portfolio APIs when available.
+    # Stellar RPC has no account-filtered history endpoint; Horizon is kept for this.
     try:
         response = (
             w.server.transactions()

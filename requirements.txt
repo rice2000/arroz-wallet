@@ -1,4 +1,4 @@
-stellar-sdk>=9.0.0
+stellar-sdk>=13.0.0
 requests>=2.28.0
 cryptography>=42.0.0
 flask>=3.0.0

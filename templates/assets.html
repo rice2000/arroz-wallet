@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h4 class="mb-0">Manage Assets</h4>
+  <span class="badge network-badge-{{ network }} text-uppercase">{{ network_name }}</span>
+</div>
+
+<div class="alert alert-info small">
+  <strong>Why manual tracking?</strong>
+  Stellar RPC cannot enumerate all trustlines for an account — unlike Horizon's
+  <code>/accounts/{id}</code> endpoint. Add the assets you hold here so Arroz Wallet
+  can fetch their balances via <code>getLedgerEntries</code>.
+</div>
+
+<!-- Add asset form -->
+<div class="card mb-4">
+  <div class="card-header text-muted small">Add Asset</div>
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="action" value="add">
+      <div class="row g-3 align-items-end">
+        <div class="col-sm-3">
+          <label for="code" class="form-label">Asset Code</label>
+          <input type="text" class="form-control" id="code" name="code"
+                 placeholder="e.g. USDC" maxlength="12" required
+                 spellcheck="false" autocomplete="off">
+        </div>
+        <div class="col-sm-7">
+          <label for="issuer" class="form-label">Issuer Address</label>
+          <input type="text" class="form-control hash" id="issuer" name="issuer"
+                 placeholder="G..." required
+                 spellcheck="false" autocomplete="off">
+        </div>
+        <div class="col-sm-2">
+          <button type="submit" class="btn btn-primary w-100">Add</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Tracked assets list -->
+<div class="card">
+  <div class="card-header text-muted small">Tracked Assets</div>
+  {% if tracked_assets %}
+    <ul class="list-group list-group-flush">
+      {% for a in tracked_assets %}
+        <li class="list-group-item d-flex align-items-start gap-3">
+          <div class="flex-grow-1">
+            <span class="fw-semibold">{{ a.code }}</span>
+            <br>
+            <code class="hash text-muted small">{{ a.issuer }}</code>
+          </div>
+          <form method="post" class="flex-shrink-0">
+            <input type="hidden" name="action" value="remove">
+            <input type="hidden" name="code" value="{{ a.code }}">
+            <input type="hidden" name="issuer" value="{{ a.issuer }}">
+            <button type="submit" class="btn btn-sm btn-outline-danger">Remove</button>
+          </form>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <div class="card-body text-muted small">
+      No assets tracked yet. Add an asset above to see its balance on the dashboard.
+    </div>
+  {% endif %}
+</div>
+
+{% endblock %}
