@@ -11,6 +11,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from cryptography.fernet import InvalidToken
 from stellar_sdk import Keypair, Server, TransactionBuilder, Asset
+from stellar_sdk.exceptions import NotFoundError
 
 import wallet as w
 
@@ -55,6 +56,7 @@ def index():
     balance = None
     error = None
 
+    not_funded = False
     if public_key:
         try:
             account = w.server.accounts().account_id(public_key).call()
@@ -62,6 +64,8 @@ def index():
                 if b.get("asset_type") == "native":
                     balance = b["balance"]
                     break
+        except NotFoundError:
+            not_funded = True
         except Exception as e:
             error = str(e)
 
@@ -70,6 +74,7 @@ def index():
         public_key=public_key,
         balance=balance,
         error=error,
+        not_funded=not_funded,
         network=network,
         network_name=w.NETWORK_NAME,
     )
@@ -259,6 +264,34 @@ def history():
         network=network,
         network_name=w.NETWORK_NAME,
     )
+
+
+@app.route("/fund", methods=["POST"])
+def fund():
+    get_network_config()
+    if not w.FRIENDBOT_URL:
+        flash("Friendbot is only available on testnet.", "warning")
+        return redirect(url_for("index"))
+
+    public_key = read_public_key()
+    if not public_key:
+        flash("No wallet found.", "warning")
+        return redirect(url_for("create"))
+
+    try:
+        resp = http_requests.get(
+            w.FRIENDBOT_URL, params={"addr": public_key}, timeout=15
+        )
+        if resp.status_code == 200:
+            flash("Account funded with 10,000 testnet XLM!", "success")
+        else:
+            data = resp.json()
+            detail = data.get("detail", resp.text)
+            flash(f"Friendbot error: {detail}", "danger")
+    except Exception as e:
+        flash(f"Could not contact Friendbot: {e}", "danger")
+
+    return redirect(url_for("index"))
 
 
 @app.route("/network", methods=["POST"])

@@ -1,6 +1,6 @@
 # Arroz Wallet
 
-A simple command-line Stellar wallet built in Python. Supports both testnet and mainnet.
+A Stellar wallet built in Python with both a command-line interface and a web UI. Supports testnet and mainnet.
 
 ## Features
 
@@ -8,8 +8,9 @@ A simple command-line Stellar wallet built in Python. Supports both testnet and 
 - **Check balance** — view your XLM balance via the Horizon API
 - **Send XLM** — send payments to any Stellar address (password required to sign)
 - **Transaction history** — view your 10 most recent transactions
-- **Testnet + Mainnet** — choose your network at startup
+- **Testnet + Mainnet** — switch networks at any time
 - **Encrypted secret key** — your secret key is never stored in plaintext
+- **Web UI** — browser-based interface via Flask (no Node.js or build step required)
 
 ## Requirements
 
@@ -25,6 +26,26 @@ pip install -r requirements.txt
 ```
 
 ## Usage
+
+### Web UI (recommended)
+
+```bash
+python3 app.py
+```
+
+Then open **http://localhost:5001** in your browser.
+
+> **Note:** Port 5000 is reserved by AirPlay Receiver on macOS Monterey and later, so the web UI runs on port 5001.
+
+The web UI exposes all wallet features — dashboard, create wallet, send XLM, and transaction history. Network selection (testnet/mainnet) is available in the navbar and applies immediately.
+
+#### Testnet quickstart (web)
+
+1. Run `python3 app.py` and open http://localhost:5001
+2. Click **Create Wallet**, choose a password, and submit — the account is funded automatically via Friendbot
+3. If you already have a wallet that isn't funded yet, click **Fund with Friendbot** on the dashboard
+
+### CLI
 
 ```bash
 python3 wallet.py
@@ -50,7 +71,7 @@ Select network:
 ╚══════════════════════════╝
 ```
 
-### Testnet quickstart
+#### Testnet quickstart (CLI)
 
 1. Run the script and select **Testnet**
 2. Choose **Create new wallet** — you'll be offered free testnet XLM via Friendbot
@@ -63,7 +84,7 @@ The secret key is encrypted at rest using a password you set when creating the w
 - **Encryption:** [Fernet](https://cryptography.io/en/latest/fernet/) (AES-128-CBC + HMAC-SHA256)
 - **Key derivation:** PBKDF2HMAC with SHA-256 and 480,000 iterations — makes brute-force attacks slow even if `wallet.json` is stolen
 - **Random salt:** a unique 16-byte salt is generated per wallet and stored alongside the encrypted secret
-- **Password input:** entered via `getpass` — never displayed on screen
+- **Password input:** entered via `getpass` (CLI) or an HTML password field (web) — used server-side only and never stored
 - **In-memory only:** the plaintext secret key is decrypted in memory only when signing a transaction, and never written to disk
 
 `wallet.json` stores three fields: `public_key`, `encrypted_secret`, and `salt`. No plaintext secret key is ever saved.
@@ -75,3 +96,5 @@ The secret key is encrypted at rest using a password you set when creating the w
 - [stellar-sdk](https://github.com/StellarCN/py-stellar-base) — Python SDK for Stellar
 - [Horizon API](https://developers.stellar.org/api/horizon) — Stellar's REST API
 - [cryptography](https://cryptography.io) — Fernet encryption + PBKDF2HMAC key derivation
+- [Flask](https://flask.palletsprojects.com) — web framework for the browser UI
+- [Bootstrap 5](https://getbootstrap.com) — styling for the web UI

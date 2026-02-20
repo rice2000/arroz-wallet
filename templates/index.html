@@ -35,7 +35,21 @@
   <div class="card mb-3">
     <div class="card-header text-muted small">XLM Balance</div>
     <div class="card-body">
-      {% if error %}
+      {% if not_funded %}
+        <p class="text-muted mb-2">
+          This account hasn't been activated on {{ network_name }} yet.
+          {% if network == 'testnet' %}
+            Fund it with Friendbot to get started.
+          {% else %}
+            Send at least 1 XLM to the address above to activate it.
+          {% endif %}
+        </p>
+        {% if network == 'testnet' %}
+          <form method="post" action="/fund">
+            <button type="submit" class="btn btn-warning btn-sm">Fund with Friendbot</button>
+          </form>
+        {% endif %}
+      {% elif error %}
         <div class="text-danger small">{{ error }}</div>
       {% elif balance is none %}
         <span class="text-muted">—</span>
