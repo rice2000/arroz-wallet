@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h4 class="mb-0">Create Wallet</h4>
+  <span class="badge network-badge-{{ network }} text-uppercase">{{ network_name }}</span>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <p class="text-muted mb-4">
+      Generates a new Stellar keypair. The secret key is encrypted with your
+      password and stored in <code>wallet.json</code> — it never exists in plaintext on disk.
+    </p>
+
+    {% if wallet_exists %}
+      <div class="alert alert-warning">
+        <strong>A wallet already exists.</strong> Creating a new one will permanently
+        replace it. Make sure you have a backup of your current secret key before continuing.
+      </div>
+    {% endif %}
+
+    <form method="post">
+      <div class="mb-3">
+        <label for="password" class="form-label">Password</label>
+        <input type="password" class="form-control" id="password" name="password"
+               placeholder="Choose a strong password" required autofocus>
+        <div class="form-text">You will need this password every time you send a payment.</div>
+      </div>
+
+      <div class="mb-3">
+        <label for="confirm_password" class="form-label">Confirm Password</label>
+        <input type="password" class="form-control" id="confirm_password" name="confirm_password"
+               placeholder="Repeat password" required>
+      </div>
+
+      {% if wallet_exists %}
+        <div class="mb-4 form-check">
+          <input type="checkbox" class="form-check-input" id="overwrite" name="overwrite" value="yes" required>
+          <label class="form-check-label text-danger fw-semibold" for="overwrite">
+            I understand this will permanently replace my existing wallet
+          </label>
+        </div>
+      {% endif %}
+
+      <button type="submit" class="btn btn-primary">
+        {% if wallet_exists %}Replace Wallet{% else %}Create Wallet{% endif %}
+      </button>
+      <a href="/" class="btn btn-link text-muted">Cancel</a>
+    </form>
+  </div>
+</div>
+
+{% if network == 'testnet' %}
+  <p class="text-muted small mt-3">
+    On testnet, the new account will be automatically funded with 10,000 XLM via Friendbot.
+  </p>
+{% else %}
+  <p class="text-muted small mt-3">
+    On mainnet, fund the new account by sending at least 1 XLM to the generated address.
+  </p>
+{% endif %}
+
+{% endblock %}
