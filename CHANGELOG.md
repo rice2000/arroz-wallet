@@ -1,5 +1,49 @@
 # Changelog
 
+## Milestone 3 — Stellar RPC Migration + Multi-Asset Support (2026-02-20)
+
+### What was built
+
+Migrated from Horizon to Stellar RPC for balance queries and transaction submission, and added support for tracking and sending non-XLM assets.
+
+**Stellar RPC migration**
+
+- Balance queries now use `SorobanServer.get_ledger_entries()` instead of Horizon's `/accounts/{id}`. The response returns raw `LedgerEntryData` XDR, which is parsed to extract the balance in stroops and converted to a decimal string (`stroops / 10_000_000`).
+- Transaction submission now uses `SorobanServer.send_transaction()`. Unlike Horizon's `submit_transaction()`, this returns immediately with a `PENDING` status and a hash rather than waiting for ledger inclusion.
+- Horizon is kept for transaction history only — Stellar RPC has no account-filtered history endpoint. Marked with a `TODO: migrate when Portfolio APIs are available` comment.
+- Added `rpc_url` to both network configs and a `soroban_server` global in `wallet.py`, initialized alongside the existing `server` (Horizon) on network selection.
+
+**Multi-asset support**
+
+Stellar RPC cannot enumerate all trustlines for an account (unlike Horizon's `/accounts/{id}` which returns every balance). The solution is user-managed asset tracking: assets to display are stored in `wallet.json` under `tracked_assets`, and each one is fetched individually via `getLedgerEntries` using the trustline ledger key.
+
+- New `/assets` route and `assets.html` template — add an asset by code + issuer address, remove with a button
+- `wallet.json` gains a `tracked_assets` field (empty array on wallet creation)
+- Dashboard balance card replaced with a table showing XLM plus all tracked assets
+- Send form gains an asset dropdown; value is `"native"` or `"CODE:ISSUER"`
+
+**CLI updates**
+
+- `check_balance()` uses the new RPC functions
+- `send_payment()` supports asset selection and RPC submission
+- Menu gains option 6: Manage tracked assets
+
+### Issues discovered and fixed
+
+**`LedgerEntryData` vs `LedgerEntry` XDR parsing**
+
+The dashboard showed: *"-1876849738 is not a valid PublicKeyType"*
+
+The Stellar RPC `getLedgerEntries` response returns `LedgerEntryData` XDR in `entries[].xdr` — not the full `LedgerEntry` wrapper. Parsing it as `LedgerEntry` shifted all byte offsets, causing the account's ed25519 key bytes to be interpreted as a `PublicKeyType` enum, producing an invalid value.
+
+Fixed by using `xdr.LedgerEntryData.from_xdr(entry.xdr).account` (as the plan originally specified) rather than `xdr.LedgerEntry.from_xdr(entry.xdr).data.account`.
+
+### Key design decision: why not auto-discover trustlines?
+
+Horizon's `/accounts/{id}` returns all balances in one call. Stellar RPC's `getLedgerEntries` requires knowing each asset's ledger key upfront — there is no "list all trustlines for this account" RPC method. The user-managed `tracked_assets` list is the practical workaround until higher-level portfolio APIs exist.
+
+---
+
 ## Milestone 2 — Web UI (2026-02-20)
 
 ### What was built
