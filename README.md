@@ -137,10 +137,12 @@ To enable the ramp, create an `etherfuse.json` file in the project directory:
 
 1. Add your `api_key` from the Etherfuse dashboard — use the sandbox key for testnet ([devnet.etherfuse.com](https://devnet.etherfuse.com))
 2. Leave `customer_id` as a placeholder — the app auto-generates one on first run and writes it back to `etherfuse.json`
-3. Leave `bank_account_id` as a placeholder for now
-4. Go to `/ramp` and click **Generate onboarding link** — you'll be redirected to Etherfuse's hosted UI to accept T&C, complete KYC, and add a bank account
-5. After completing the onboarding flow, copy your `bank_account_id` from the Etherfuse dashboard into `etherfuse.json` and restart the app — the ramp forms will now appear
-6. **Sandbox only:** contact `stablebond@etherfuse.com` with your org ID (the third segment of your `api_key`) to request proxy account provisioning before placing orders
+3. Generate a UUID (e.g. `python3 -c "import uuid; print(uuid.uuid4())"`) and set it as `bank_account_id` in `etherfuse.json`
+4. Go to `/ramp` and click **Generate onboarding link** — this builds the presigned URL using your `customer_id` and `bank_account_id` and redirects you to Etherfuse's hosted UI
+5. Complete the onboarding flow: accept T&C, go to the **Personal** tab, and complete Plaid bank verification using the pre-filled personal bank information
+6. The ramp forms will now appear — your `customer_id` and `bank_account_id` are already consistent with the onboarding URL
+
+> **Important:** The `customer_id` and `bank_account_id` you use in every quote/order must exactly match the IDs that were passed when you generated the onboarding URL. Etherfuse links the bank account to the `bank_account_id` you supply during onboarding.
 
 Once configured:
 
