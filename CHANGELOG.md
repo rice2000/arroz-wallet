@@ -1,5 +1,28 @@
 # Changelog
 
+## Milestone 5 — Trustline Creation (2026-02-24)
+
+### What was built
+
+Added on-chain trustline creation to the Assets page. Before this, `/assets` only managed a local tracking list — it had no ability to authorize the account to hold a non-XLM asset on the Stellar ledger. Users had to create trustlines out-of-band and then manually add the asset to the tracking list separately.
+
+**`app.py`**
+
+New `trustline` action in the `assets()` route. Decrypts the secret key with the wallet password, builds a `ChangeTrust` transaction via `TransactionBuilder.append_change_trust_op()`, signs and submits it via `SorobanServer`, then calls `add_tracked_asset()` on success so the asset appears on the dashboard immediately. `InvalidToken` is caught and re-renders the form with "Incorrect password."
+
+**`templates/assets.html`**
+
+Replaced the single "Add Asset" card with two clearly separated cards:
+
+- **Create Trustline** — code, issuer, and password fields; submits the on-chain `ChangeTrust` transaction and adds to the tracking list in one step. Includes a mainnet warning banner.
+- **Add to Tracking List** — the original form, kept for assets where a trustline already exists but isn't being tracked yet.
+
+### Verified
+
+Created a fresh testnet wallet via Friendbot, then used the Create Trustline form with USDC (`GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5`). Transaction succeeded, USDC appeared in the dashboard balance table with a `0.0000000` balance, confirming the trustline is live on-chain.
+
+---
+
 ## Milestone 4 — DeFindex Yield Vault Integration (2026-02-24)
 
 ### What was built
