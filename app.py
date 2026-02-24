@@ -570,13 +570,13 @@ def ramp():
     recent_orders = []
 
     try:
-        exchange_rates = ef.get_exchange_rates()
+        exchange_rates = ef.get_exchange_rates(network)
     except Exception:
         pass
 
     if ef.is_ready():
         try:
-            recent_orders = ef.list_orders()
+            recent_orders = ef.list_orders(network=network)
         except Exception:
             pass
 
@@ -614,7 +614,7 @@ def ramp():
         order_id = ef.new_order_id()
 
         try:
-            quote = ef.get_quote(action, amount, public_key)
+            quote = ef.get_quote(action, amount, public_key, network=network)
         except Exception as e:
             flash(f"Quote error: {e}", "danger")
             return render_template(
@@ -629,7 +629,7 @@ def ramp():
             )
 
         try:
-            order = ef.create_order(order_id, quote["quoteId"], action, public_key, amount)
+            order = ef.create_order(order_id, quote["quoteId"], action, public_key, amount, network=network)
         except Exception as e:
             flash(f"Order error: {e}", "danger")
             return render_template(
@@ -666,10 +666,7 @@ def ramp():
                         data = json.load(f)
                     secret_key = w._decrypt_secret(data["encrypted_secret"], data["salt"], password)
                     source_account = w.load_account_rpc(public_key)
-                    cetes_asset = Asset(
-                        "CETES",
-                        "GCRYUGD5NVARGXT56XEZI5CIFCQETYHAPQQTHO2O3IQZTHDH4LATMYWC",
-                    )
+                    cetes_asset = Asset("CETES", ef.cetes_issuer(network))
                     builder = TransactionBuilder(
                         source_account=source_account,
                         network_passphrase=w.NETWORK_PASSPHRASE,
@@ -753,8 +750,9 @@ def ramp_setup():
 
     ef.ensure_customer_id()
 
+    network = session.get("network", "testnet")
     try:
-        url = ef.get_onboarding_url(public_key)
+        url = ef.get_onboarding_url(public_key, network=network)
         if url:
             return redirect(url)
         flash("Could not retrieve onboarding URL from Etherfuse.", "danger")

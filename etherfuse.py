@@ -7,7 +7,19 @@ import uuid
 import requests
 
 _CONFIG_FILE = "etherfuse.json"
-_BASE_URL = "https://api.etherfuse.com"
+
+# Network-aware base URLs (testnet uses the sandbox API)
+_BASE_URLS = {
+    "testnet": "https://api.sand.etherfuse.com",
+    "mainnet": "https://api.etherfuse.com",
+}
+
+# Sandbox CETES issuer on Stellar testnet
+# Mainnet issuer: GCRYUGD5NVARGXT56XEZI5CIFCQETYHAPQQTHO2O3IQZTHDH4LATMYWC
+_CETES_ISSUERS = {
+    "testnet": "GC3CW7EDYRTWQ635VDIGY6S4ZUF5L6TQ7AA4MWS7LEQDBLUSZXV7UPS4",
+    "mainnet": "GCRYUGD5NVARGXT56XEZI5CIFCQETYHAPQQTHO2O3IQZTHDH4LATMYWC",
+}
 
 _PLACEHOLDER = "uuid-from-etherfuse-dashboard"
 
@@ -39,6 +51,14 @@ def is_ready() -> bool:
     )
 
 
+def _base_url(network: str = "testnet") -> str:
+    return _BASE_URLS.get(network, _BASE_URLS["testnet"])
+
+
+def cetes_issuer(network: str = "testnet") -> str:
+    return _CETES_ISSUERS.get(network, _CETES_ISSUERS["testnet"])
+
+
 def _headers() -> dict:
     return {"Authorization": _cfg["api_key"], "Content-Type": "application/json"}
 
@@ -47,23 +67,42 @@ def new_order_id() -> str:
     return str(uuid.uuid4())
 
 
-def get_exchange_rates() -> dict:
-    """GET /ramp/exchange-rates."""
-    resp = requests.get(f"{_BASE_URL}/ramp/exchange-rates", headers=_headers(), timeout=15)
+def get_exchange_rates(network: str = "testnet") -> dict:
+    """GET /ramp/assets — returns available assets and rates."""
+    resp = requests.get(
+        f"{_base_url(network)}/ramp/assets",
+        headers=_headers(),
+        params={"blockchain": "stellar"},
+        timeout=15,
+    )
     if resp.status_code != 200:
-        raise ValueError(f"Etherfuse /ramp/exchange-rates returned {resp.status_code}: {resp.text}")
+        raise ValueError(f"Etherfuse /ramp/assets returned {resp.status_code}: {resp.text}")
     return resp.json()
 
 
-def get_quote(direction: str, amount: str, public_key: str, blockchain: str = "stellar") -> dict:
-    """POST /ramp/quote — returns dict including quoteId and rate info."""
+def get_quote(direction: str, amount: str, public_key: str, network: str = "testnet", blockchain: str = "stellar") -> dict:
+    """POST /ramp/quote — returns quote including quoteId, exchangeRate, destinationAmountAfterFee.
+
+    quoteAssets format confirmed from sandbox testing:
+      {"type": "onramp"|"offramp", "sourceAsset": "<CODE>", "targetAsset": "<CODE:ISSUER>"}
+    For onramp: sourceAsset="MXN", targetAsset="CETES:<issuer>"
+    For offramp: sourceAsset="CETES:<issuer>", targetAsset="MXN"
+    """
+    issuer = cetes_issuer(network)
+    if direction == "onramp":
+        quote_assets = {"type": "onramp", "sourceAsset": "MXN", "targetAsset": f"CETES:{issuer}"}
+    else:
+        quote_assets = {"type": "offramp", "sourceAsset": f"CETES:{issuer}", "targetAsset": "MXN"}
+
     body = {
-        "direction": direction,
-        "amount": amount,
+        "quoteId": new_order_id(),
+        "customerId": _cfg["customer_id"],
         "publicKey": public_key,
         "blockchain": blockchain,
+        "sourceAmount": amount,
+        "quoteAssets": quote_assets,
     }
-    resp = requests.post(f"{_BASE_URL}/ramp/quote", headers=_headers(), json=body, timeout=15)
+    resp = requests.post(f"{_base_url(network)}/ramp/quote", headers=_headers(), json=body, timeout=15)
     if resp.status_code != 200:
         raise ValueError(f"Etherfuse /ramp/quote returned {resp.status_code}: {resp.text}")
     return resp.json()
@@ -75,9 +114,14 @@ def create_order(
     direction: str,
     public_key: str,
     amount: str,
+    network: str = "testnet",
     blockchain: str = "stellar",
 ) -> dict:
-    """POST /ramp/order — create an on-ramp or off-ramp order."""
+    """POST /ramp/order — create an on-ramp or off-ramp order.
+
+    Requires a quoteId from a prior call to get_quote().
+    fiatAmount used for onramp; tokenAmount for offramp.
+    """
     body = {
         "orderId": order_id,
         "quoteId": quote_id,
@@ -91,27 +135,26 @@ def create_order(
         body["fiatAmount"] = amount
     else:
         body["tokenAmount"] = amount
-    resp = requests.post(f"{_BASE_URL}/ramp/order", headers=_headers(), json=body, timeout=15)
+    resp = requests.post(f"{_base_url(network)}/ramp/order", headers=_headers(), json=body, timeout=15)
     if resp.status_code != 200:
         raise ValueError(f"Etherfuse /ramp/order returned {resp.status_code}: {resp.text}")
     return resp.json()
 
 
-def list_orders(page_size: int = 5, page_number: int = 1) -> list:
-    """POST /ramp/orders — returns a list of recent orders."""
+def list_orders(page_size: int = 5, page_number: int = 0, network: str = "testnet") -> list:
+    """POST /ramp/orders — returns a list of recent orders. Page numbers are 0-indexed."""
     body = {"pageSize": page_size, "pageNumber": page_number}
-    resp = requests.post(f"{_BASE_URL}/ramp/orders", headers=_headers(), json=body, timeout=15)
+    resp = requests.post(f"{_base_url(network)}/ramp/orders", headers=_headers(), json=body, timeout=15)
     if resp.status_code != 200:
         raise ValueError(f"Etherfuse /ramp/orders returned {resp.status_code}: {resp.text}")
     data = resp.json()
-    # API may return {"orders": [...]} or a bare list
     if isinstance(data, list):
         return data
-    return data.get("orders", data.get("data", []))
+    return data.get("items", data.get("orders", data.get("data", [])))
 
 
-def get_onboarding_url(public_key: str) -> str:
-    """POST /ramp/onboarding-url — returns presigned URL for KYC/bank setup."""
+def get_onboarding_url(public_key: str, network: str = "testnet") -> str:
+    """POST /ramp/onboarding-url — returns presigned URL for KYC/T&C/bank setup."""
     body = {
         "customerId": _cfg["customer_id"],
         "bankAccountId": _cfg.get("bank_account_id", ""),
@@ -119,14 +162,13 @@ def get_onboarding_url(public_key: str) -> str:
         "blockchain": "stellar",
     }
     resp = requests.post(
-        f"{_BASE_URL}/ramp/onboarding-url", headers=_headers(), json=body, timeout=15
+        f"{_base_url(network)}/ramp/onboarding-url", headers=_headers(), json=body, timeout=15
     )
     if resp.status_code != 200:
         raise ValueError(
             f"Etherfuse /ramp/onboarding-url returned {resp.status_code}: {resp.text}"
         )
-    data = resp.json()
-    return data.get("presigned_url") or data.get("url") or data.get("onboardingUrl", "")
+    return resp.json().get("presigned_url", "")
 
 
 def ensure_customer_id() -> bool:
