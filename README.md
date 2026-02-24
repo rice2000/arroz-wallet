@@ -5,9 +5,11 @@ A Stellar wallet built in Python with both a command-line interface and a web UI
 ## Features
 
 - **Create a wallet** — generate a new keypair, encrypted with a password you choose
-- **Check balance** — view your XLM balance via the Horizon API
-- **Send XLM** — send payments to any Stellar address (password required to sign)
+- **Check balance** — view XLM and tracked asset balances via Stellar RPC
+- **Send payments** — send XLM or any tracked asset to any Stellar address (password required to sign)
 - **Transaction history** — view your 10 most recent transactions
+- **Manage assets** — track non-XLM assets (USDC, etc.) for balance display and sending
+- **Yield vault** — deposit and withdraw USDC in a DeFindex yield vault; live APY and balance shown on the dashboard
 - **Testnet + Mainnet** — switch networks at any time
 - **Encrypted secret key** — your secret key is never stored in plaintext
 - **Web UI** — browser-based interface via Flask (no Node.js or build step required)
@@ -37,7 +39,7 @@ Then open **http://localhost:5001** in your browser.
 
 > **Note:** Port 5000 is reserved by AirPlay Receiver on macOS Monterey and later, so the web UI runs on port 5001.
 
-The web UI exposes all wallet features — dashboard, create wallet, send XLM, and transaction history. Network selection (testnet/mainnet) is available in the navbar and applies immediately.
+The web UI exposes all wallet features — dashboard, create wallet, send payments, transaction history, asset management, and the yield vault. Network selection (testnet/mainnet) is available in the navbar and applies immediately.
 
 #### Testnet quickstart (web)
 
@@ -67,7 +69,8 @@ Select network:
 ║  3. Check balance        ║
 ║  4. Send payment         ║
 ║  5. Transaction history  ║
-║  6. Exit                 ║
+║  6. Manage tracked assets║
+║  7. Exit                 ║
 ╚══════════════════════════╝
 ```
 
@@ -76,6 +79,28 @@ Select network:
 1. Run the script and select **Testnet**
 2. Choose **Create new wallet** — you'll be offered free testnet XLM via Friendbot
 3. Use the menu to check your balance, send payments, and view history
+
+## Yield Vault (DeFindex)
+
+The vault feature lets you earn yield on USDC by depositing into a [DeFindex](https://defindex.io) vault. To enable it, create a `defindex.json` file in the project directory:
+
+```json
+{
+  "api_key": "your_defindex_api_key",
+  "vaults": {
+    "testnet": "TESTNET_VAULT_CONTRACT_ADDRESS",
+    "mainnet": "MAINNET_VAULT_CONTRACT_ADDRESS"
+  }
+}
+```
+
+Once configured:
+
+- The dashboard shows live APY, your vault balance, and TVL
+- The **Vault** page (`/vault`) has deposit and withdraw forms
+- Transactions are built by DeFindex, signed locally with your wallet password, and submitted via Stellar RPC — your secret key never leaves your machine
+
+`defindex.json` is excluded from git via `.gitignore`. If the file is absent, the vault card is hidden and `/vault` redirects with a warning — no other functionality is affected.
 
 ## Security
 
@@ -89,12 +114,13 @@ The secret key is encrypted at rest using a password you set when creating the w
 
 `wallet.json` stores three fields: `public_key`, `encrypted_secret`, and `salt`. No plaintext secret key is ever saved.
 
-`wallet.json` is excluded from git via `.gitignore`. Never share it or your password.
+`wallet.json` and `defindex.json` are excluded from git via `.gitignore`. Never share either file or your wallet password.
 
 ## Built with
 
 - [stellar-sdk](https://github.com/StellarCN/py-stellar-base) — Python SDK for Stellar
-- [Horizon API](https://developers.stellar.org/api/horizon) — Stellar's REST API
+- [Stellar RPC](https://developers.stellar.org/docs/data/rpc) — balance queries and transaction submission
+- [DeFindex API](https://docs.defindex.io) — yield vault deposit/withdraw XDR generation
 - [cryptography](https://cryptography.io) — Fernet encryption + PBKDF2HMAC key derivation
 - [Flask](https://flask.palletsprojects.com) — web framework for the browser UI
 - [Bootstrap 5](https://getbootstrap.com) — styling for the web UI
