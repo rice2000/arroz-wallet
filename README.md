@@ -11,6 +11,7 @@ A Stellar wallet built in Python with both a command-line interface and a web UI
 - **Trustlines** — create on-chain trustlines directly from the wallet so your account can hold non-XLM assets
 - **Manage assets** — track non-XLM assets (USDC, etc.) for balance display and sending
 - **Yield vault** — deposit and withdraw USDC in a DeFindex yield vault; live APY and balance shown on the dashboard
+- **Fiat on/off ramp** — convert USD ↔ USDC via Etherfuse; on-ramp deposits USDC to your wallet, off-ramp signs an outgoing Stellar tx and credits your bank account
 - **Testnet + Mainnet** — switch networks at any time
 - **Encrypted secret key** — your secret key is never stored in plaintext
 - **Web UI** — browser-based interface via Flask (no Node.js or build step required)
@@ -40,7 +41,7 @@ Then open **http://localhost:5001** in your browser.
 
 > **Note:** Port 5000 is reserved by AirPlay Receiver on macOS Monterey and later, so the web UI runs on port 5001.
 
-The web UI exposes all wallet features — dashboard, create wallet, send payments, transaction history, asset management, and the yield vault. Network selection (testnet/mainnet) is available in the navbar and applies immediately.
+The web UI exposes all wallet features — dashboard, create wallet, send payments, transaction history, asset management, the yield vault, and the fiat ramp. Network selection (testnet/mainnet) is available in the navbar and applies immediately.
 
 #### Testnet quickstart (web)
 
@@ -116,6 +117,33 @@ Once configured:
 
 `defindex.json` is excluded from git via `.gitignore`. If the file is absent, the vault card is hidden and `/vault` redirects with a warning — no other functionality is affected.
 
+## Fiat Ramp (Etherfuse)
+
+The ramp feature lets you move money between USD and USDC via [Etherfuse](https://etherfuse.com). To enable it, create an `etherfuse.json` file in the project directory:
+
+```json
+{
+  "api_key": "your_etherfuse_api_key",
+  "customer_id": "your-customer-uuid",
+  "bank_account_id": "your-bank-account-uuid"
+}
+```
+
+**Setup (one-time):**
+
+1. Add your `api_key` from the Etherfuse dashboard (use [devnet.etherfuse.com](https://devnet.etherfuse.com) for sandbox)
+2. Leave `customer_id` and `bank_account_id` as placeholders — the app auto-generates a `customer_id` on first run
+3. Go to `/ramp` and click **Generate onboarding link** — you'll be redirected to Etherfuse to complete KYC and add a bank account
+4. Copy your `bank_account_id` from the Etherfuse dashboard into `etherfuse.json` and restart the app
+
+Once configured:
+
+- **On-ramp** — enter a USD amount; Etherfuse handles the bank transfer and deposits USDC to your Stellar wallet. No password needed.
+- **Off-ramp** — enter a USDC amount and your wallet password; the app signs and submits an outgoing Stellar transaction, and Etherfuse credits your bank account.
+- **Recent orders** — the ramp page shows your last 5 orders with status. Refresh to update.
+
+`etherfuse.json` is excluded from git via `.gitignore`. If the file is absent, `/ramp` redirects with a warning — no other functionality is affected.
+
 ## Security
 
 The secret key is encrypted at rest using a password you set when creating the wallet.
@@ -128,13 +156,14 @@ The secret key is encrypted at rest using a password you set when creating the w
 
 `wallet.json` stores three fields: `public_key`, `encrypted_secret`, and `salt`. No plaintext secret key is ever saved.
 
-`wallet.json` and `defindex.json` are excluded from git via `.gitignore`. Never share either file or your wallet password.
+`wallet.json`, `defindex.json`, and `etherfuse.json` are excluded from git via `.gitignore`. Never share any of these files or your wallet password.
 
 ## Built with
 
 - [stellar-sdk](https://github.com/StellarCN/py-stellar-base) — Python SDK for Stellar
 - [Stellar RPC](https://developers.stellar.org/docs/data/rpc) — balance queries and transaction submission
 - [DeFindex API](https://docs.defindex.io) — yield vault deposit/withdraw XDR generation
+- [Etherfuse Ramp API](https://etherfuse.com) — fiat on/off ramp quote, order, and onboarding
 - [cryptography](https://cryptography.io) — Fernet encryption + PBKDF2HMAC key derivation
 - [Flask](https://flask.palletsprojects.com) — web framework for the browser UI
 - [Bootstrap 5](https://getbootstrap.com) — styling for the web UI
