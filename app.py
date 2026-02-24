@@ -666,9 +666,9 @@ def ramp():
                         data = json.load(f)
                     secret_key = w._decrypt_secret(data["encrypted_secret"], data["salt"], password)
                     source_account = w.load_account_rpc(public_key)
-                    usdc_asset = Asset(
-                        "USDC",
-                        "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+                    cetes_asset = Asset(
+                        "CETES",
+                        "GCRYUGD5NVARGXT56XEZI5CIFCQETYHAPQQTHO2O3IQZTHDH4LATMYWC",
                     )
                     builder = TransactionBuilder(
                         source_account=source_account,
@@ -676,7 +676,7 @@ def ramp():
                         base_fee=100,
                     ).append_payment_op(
                         destination=deposit_address,
-                        asset=usdc_asset,
+                        asset=cetes_asset,
                         amount=amount,
                     ).set_timeout(30)
                     if memo:

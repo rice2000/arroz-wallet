@@ -3,7 +3,7 @@
 {% block content %}
 
 <div class="d-flex align-items-center gap-2 mb-3">
-  <h4 class="mb-0">Fiat On/Off Ramp</h4>
+  <h4 class="mb-0">MXN ↔ CETES Ramp</h4>
   <span class="badge network-badge-{{ network }} text-uppercase">{{ network_name }}</span>
 </div>
 
@@ -40,27 +40,27 @@
 
 <!-- On-Ramp -->
 <div class="card mb-4">
-  <div class="card-header text-muted small">On-Ramp — Fiat → USDC</div>
+  <div class="card-header text-muted small">On-Ramp — MXN → CETES</div>
   <div class="card-body">
     <p class="text-muted small mb-3">
-      Send USD from your bank; Etherfuse deposits USDC to your Stellar wallet.
+      Send MXN from your bank; Etherfuse deposits CETES to your Stellar wallet.
       No password needed — the bank transfer is handled externally.
     </p>
     <form method="post">
       <input type="hidden" name="action" value="onramp">
 
       <div class="mb-3">
-        <label for="onramp-amount" class="form-label">Amount (USD)</label>
+        <label for="onramp-amount" class="form-label">Amount (MXN)</label>
         <input type="number" class="form-control" id="onramp-amount" name="amount"
                placeholder="0.00" step="0.01" min="0.01" required
                value="{{ form_amount if form_action == 'onramp' and form_amount else '' }}">
         {% if exchange_rates %}
           <div class="form-text">
-            Rate: 1 USD ≈
+            Rate: 1 MXN ≈
             {% if exchange_rates.rate is defined %}
-              {{ exchange_rates.rate }} USDC
-            {% elif exchange_rates.usdToUsdc is defined %}
-              {{ exchange_rates.usdToUsdc }} USDC
+              {{ exchange_rates.rate }} CETES
+            {% elif exchange_rates.mxnToCetes is defined %}
+              {{ exchange_rates.mxnToCetes }} CETES
             {% else %}
               —
             {% endif %}
@@ -77,32 +77,32 @@
 
 <!-- Off-Ramp -->
 <div class="card mb-4">
-  <div class="card-header text-muted small">Off-Ramp — USDC → Fiat</div>
+  <div class="card-header text-muted small">Off-Ramp — CETES → MXN</div>
   <div class="card-body">
     {% if network == 'mainnet' %}
       <div class="alert alert-warning small py-2 mb-3">
-        Real USDC will be sent from your wallet. This is irreversible.
+        Real CETES will be sent from your wallet. This is irreversible.
       </div>
     {% endif %}
     <p class="text-muted small mb-3">
-      Send USDC from your Stellar wallet; Etherfuse deposits USD to your bank account.
+      Send CETES from your Stellar wallet; Etherfuse deposits MXN to your bank account.
       Your wallet password is needed to sign the outgoing Stellar transaction.
     </p>
     <form method="post">
       <input type="hidden" name="action" value="offramp">
 
       <div class="mb-3">
-        <label for="offramp-amount" class="form-label">Amount (USDC)</label>
+        <label for="offramp-amount" class="form-label">Amount (CETES)</label>
         <input type="number" class="form-control" id="offramp-amount" name="amount"
                placeholder="0.0000000" step="0.0000001" min="0.0000001" required
                value="{{ form_amount if form_action == 'offramp' and form_amount else '' }}">
         {% if exchange_rates %}
           <div class="form-text">
-            Rate: 1 USDC ≈
+            Rate: 1 CETES ≈
             {% if exchange_rates.rate is defined %}
-              {{ exchange_rates.rate }} USD
-            {% elif exchange_rates.usdcToUsd is defined %}
-              {{ exchange_rates.usdcToUsd }} USD
+              {{ exchange_rates.rate }} MXN
+            {% elif exchange_rates.cetesToMxn is defined %}
+              {{ exchange_rates.cetesToMxn }} MXN
             {% else %}
               —
             {% endif %}
