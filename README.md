@@ -8,6 +8,7 @@ A Stellar wallet built in Python with both a command-line interface and a web UI
 - **Check balance** — view XLM and tracked asset balances via Stellar RPC
 - **Send payments** — send XLM or any tracked asset to any Stellar address (password required to sign)
 - **Transaction history** — view your 10 most recent transactions
+- **Trustlines** — create on-chain trustlines directly from the wallet so your account can hold non-XLM assets
 - **Manage assets** — track non-XLM assets (USDC, etc.) for balance display and sending
 - **Yield vault** — deposit and withdraw USDC in a DeFindex yield vault; live APY and balance shown on the dashboard
 - **Testnet + Mainnet** — switch networks at any time
@@ -46,6 +47,7 @@ The web UI exposes all wallet features — dashboard, create wallet, send paymen
 1. Run `python3 app.py` and open http://localhost:5001
 2. Click **Create Wallet**, choose a password, and submit — the account is funded automatically via Friendbot
 3. If you already have a wallet that isn't funded yet, click **Fund with Friendbot** on the dashboard
+4. To hold USDC or another asset, go to **Assets → Create Trustline**, enter the asset code, issuer, and your password
 
 ### CLI
 
@@ -79,6 +81,18 @@ Select network:
 1. Run the script and select **Testnet**
 2. Choose **Create new wallet** — you'll be offered free testnet XLM via Friendbot
 3. Use the menu to check your balance, send payments, and view history
+
+## Trustlines
+
+Before your account can hold any non-XLM asset, it must have an on-chain trustline for that asset. Go to **Assets** (`/assets`) and use the **Create Trustline** form:
+
+| Field | Example (USDC on testnet) |
+|-------|--------------------------|
+| Asset Code | `USDC` |
+| Issuer Address | `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` |
+| Password | your wallet password |
+
+On success the asset is added to your tracking list automatically and its balance appears on the dashboard. If you already have a trustline from another tool, use **Add to Tracking List** instead — no transaction required.
 
 ## Yield Vault (DeFindex)
 
