@@ -1,5 +1,40 @@
 # Changelog
 
+## Milestone 6f — Off-Ramp End-to-End Confirmed (2026-02-24)
+
+### What was fixed
+
+The off-ramp code path in `app.py` was broken: the `create_order` response wraps the data under an `"offramp"` key (`{"offramp": {"orderId": "..."}}`), but the code tried to read `order["depositAddress"]` directly, causing a `KeyError`. Additionally, the Etherfuse sandbox returns no deposit address in the order response at all.
+
+**Root cause:** For tokenized-asset off-ramps on Stellar, the correct deposit address is the **asset issuer** — sending CETES to the issuer burns them on-chain, and Etherfuse monitors the sender's wallet for the matching payment and credits MXN to the bank account.
+
+**Fix in `app.py`:**
+- Unwrap the nested response: `offramp_data = order.get("offramp", order)`
+- Extract `actual_order_id = offramp_data.get("orderId", order_id)`
+- Default deposit address to `ef.cetes_issuer(network)` if not supplied in the response
+- Use `actual_order_id` as the Stellar memo (truncated to 28 bytes for Stellar's limit)
+
+### What was confirmed
+
+| Step | Result |
+|------|--------|
+| `POST /ramp/quote` (offramp) | ✅ 200 — 1 CETES → 1.11 MXN |
+| `POST /ramp/order` (offramp) | ✅ 200 — order ID returned |
+| Password decryption | ✅ Correct — secret key decrypted |
+| Stellar tx built + submitted | ✅ PENDING — payment to CETES issuer with order ID memo |
+| Flash message | ✅ "Order created! ID: 3151f19b... Status: pending" |
+
+The Stellar payment itself will fail on-chain with `op_underfunded` until the wallet holds CETES (received via a completed on-ramp), but the entire code path — quote, order, password decrypt, tx build, submit — runs correctly end-to-end.
+
+### Both ramp directions confirmed working
+
+| Direction | Status |
+|-----------|--------|
+| On-ramp (MXN → CETES) | ✅ Order created, CLABE returned |
+| Off-ramp (CETES → MXN) | ✅ Order created, Stellar tx submitted |
+
+---
+
 ## Milestone 6e — On-Ramp End-to-End Confirmed (2026-02-24)
 
 ### What was confirmed

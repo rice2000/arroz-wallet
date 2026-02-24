@@ -146,8 +146,8 @@ To enable the ramp, create an `etherfuse.json` file in the project directory:
 
 Once configured:
 
-- **On-ramp** — enter an MXN amount; Etherfuse handles the bank transfer and deposits CETES to your Stellar wallet. No password needed.
-- **Off-ramp** — enter a CETES amount and your wallet password; the app signs and submits an outgoing Stellar transaction, and Etherfuse credits your bank account in MXN.
+- **On-ramp** — enter an MXN amount; Etherfuse creates an order and returns a CLABE (Mexican bank account number). Transfer that amount to the CLABE via your bank; Etherfuse then deposits CETES to your Stellar wallet. No password needed.
+- **Off-ramp** — enter a CETES amount and your wallet password; the app signs and submits a Stellar payment sending CETES back to the issuer (burning them on-chain), with the Etherfuse order ID as the transaction memo. Etherfuse detects the payment and credits MXN to your bank account.
 - **Recent orders** — the ramp page shows your last 5 orders with status. Refresh to update.
 
 `etherfuse.json` is excluded from git via `.gitignore`. If the file is absent, `/ramp` redirects with a warning — no other functionality is affected.

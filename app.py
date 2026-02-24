@@ -645,6 +645,8 @@ def ramp():
 
         if action == "offramp":
             try:
+                offramp_data = order.get("offramp", order)
+                actual_order_id = offramp_data.get("orderId", order_id)
                 if "xdr" in order:
                     response = _sign_and_submit_xdr(order["xdr"], password, public_key)
                     if response.status == "ERROR":
@@ -660,8 +662,11 @@ def ramp():
                             form_amount=amount, form_action=action,
                         )
                 else:
-                    deposit_address = order["depositAddress"]
-                    memo = order.get("memo")
+                    # Off-ramp: send CETES back to the issuer (burns them).
+                    # Etherfuse matches the payment to the pending order by
+                    # wallet public key and credits MXN to the bank account.
+                    deposit_address = order.get("depositAddress", ef.cetes_issuer(network))
+                    memo = order.get("memo", actual_order_id)
                     with open(w.WALLET_FILE) as f:
                         data = json.load(f)
                     secret_key = w._decrypt_secret(data["encrypted_secret"], data["salt"], password)
@@ -676,9 +681,8 @@ def ramp():
                         asset=cetes_asset,
                         amount=amount,
                     ).set_timeout(30)
-                    if memo:
-                        from stellar_sdk import TextMemo
-                        builder.add_text_memo(memo)
+                    from stellar_sdk import TextMemo
+                    builder.add_text_memo(memo[:28])  # Stellar memo limit: 28 bytes
                     transaction = builder.build()
                     transaction.sign(Keypair.from_secret(secret_key))
                     response = w.soroban_server.send_transaction(transaction)
