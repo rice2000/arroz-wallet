@@ -1,15 +1,34 @@
 # Changelog
 
+## Milestone 6b — Switch Ramp to MXN/CETES (2026-02-24)
+
+### What was built
+
+Updated the Etherfuse ramp to use MXN and CETES (Etherfuse tokenized Mexican treasury bills) instead of USD and USDC.
+
+- **On-ramp:** user sends MXN from their bank account; Etherfuse deposits CETES to their Stellar wallet
+- **Off-ramp:** user signs a Stellar transaction sending CETES; Etherfuse credits MXN to their bank account
+
+**`app.py`**
+
+Off-ramp payment op updated from USDC to CETES. Issuer address sourced from RWA.xyz: `GCRYUGD5NVARGXT56XEZI5CIFCQETYHAPQQTHO2O3IQZTHDH4LATMYWC`.
+
+**`templates/ramp.html`**
+
+All currency labels, descriptions, and exchange rate display text updated from USD/USDC to MXN/CETES. Page heading changed to "MXN ↔ CETES Ramp".
+
+---
+
 ## Milestone 6 — Etherfuse Fiat On/Off Ramp (2026-02-24)
 
 ### What was built
 
-Added fiat on/off ramp capability via the Etherfuse Ramp API. Users complete KYC and bank account setup externally at devnet.etherfuse.com (sandbox) or etherfuse.com (mainnet), then store their credentials in a local `etherfuse.json` (gitignored). The wallet provides a `/ramp` page with an on-ramp form (fiat → USDC), an off-ramp form (USDC → fiat), and a recent orders table. No webhooks, no in-app KYC.
+Added fiat on/off ramp capability via the Etherfuse Ramp API. Users complete KYC and bank account setup externally at devnet.etherfuse.com (sandbox) or etherfuse.com (mainnet), then store their credentials in a local `etherfuse.json` (gitignored). The wallet provides a `/ramp` page with an on-ramp form (MXN → CETES), an off-ramp form (CETES → MXN), and a recent orders table. No webhooks, no in-app KYC.
 
 **New files**
 
 - `etherfuse.py` — self-contained API client. Loads `etherfuse.json` at import time with the same graceful-degradation pattern as `defindex.py`. Provides `is_configured()` (file present), `is_ready()` (all IDs are non-placeholder values), `get_exchange_rates()`, `get_quote()`, `create_order()`, `list_orders()`, `get_onboarding_url()`, and `ensure_customer_id()`. Auth header uses no "Bearer" prefix per Etherfuse's API convention.
-- `templates/ramp.html` — setup card (shown until `bank_account_id` is filled in) with "Generate onboarding link" button; on-ramp form (USD amount, no password); off-ramp form (USDC amount + wallet password to sign the outgoing Stellar tx); recent orders table with status badges.
+- `templates/ramp.html` — setup card (shown until `bank_account_id` is filled in) with "Generate onboarding link" button; on-ramp form (MXN amount, no password); off-ramp form (CETES amount + wallet password to sign the outgoing Stellar tx); recent orders table with status badges.
 - `etherfuse.json` — API key + placeholder `customer_id`/`bank_account_id`. Added to `.gitignore`; never committed.
 
 **`app.py` changes**
