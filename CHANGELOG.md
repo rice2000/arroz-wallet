@@ -1,5 +1,34 @@
 # Changelog
 
+## Milestone 6d — Onboarding + Order Testing (2026-02-24)
+
+### What was tested
+
+Completed the Etherfuse onboarding flow and pushed the order API as far as possible in the sandbox.
+
+**Onboarding completed.** Called `POST /ramp/onboarding-url` with the real `bankAccountId` (`6bf8de9d-...`) to generate a presigned URL, opened it in a browser, and accepted the Etherfuse terms and conditions for the wallet.
+
+**Order flow confirmed to 400.** After T&C acceptance, `POST /ramp/order` advanced past the "Terms and conditions" error to a new error: `Proxy account not found`. The same error occurs with every registered wallet in the sandbox org, confirming it is not a per-wallet configuration issue.
+
+### Remaining blocker: proxy account
+
+A "proxy account" is an internal Etherfuse-controlled Stellar escrow account provisioned server-side for each org during sandbox setup. It is not created via API — it requires Etherfuse backend action. The concept does not appear in Etherfuse's public documentation.
+
+**To unblock:** contact `stablebond@etherfuse.com` with sandbox org ID `0b5f7451-c33c-4b6a-b0a9-79eda09ca8ea` and request proxy account provisioning.
+
+### Current sandbox status
+
+| Endpoint | Status |
+|----------|--------|
+| `GET /ramp` | ✅ Org confirmed |
+| `POST /ramp/quote` | ✅ 200 — 100 MXN → 88.79 CETES, rate 0.8897, 0.20% fee |
+| `POST /ramp/orders` | ✅ 200 — order list working |
+| `POST /ramp/onboarding-url` | ✅ 200 — presigned URL generated |
+| T&C acceptance | ✅ Completed via onboarding UI |
+| `POST /ramp/order` | ❌ 400 — Proxy account not found (requires Etherfuse backend setup) |
+
+---
+
 ## Milestone 6c — Etherfuse Sandbox Testing + API Client Fixes (2026-02-24)
 
 ### What was built

@@ -140,6 +140,7 @@ To enable the ramp, create an `etherfuse.json` file in the project directory:
 3. Leave `bank_account_id` as a placeholder for now
 4. Go to `/ramp` and click **Generate onboarding link** — you'll be redirected to Etherfuse's hosted UI to accept T&C, complete KYC, and add a bank account
 5. After completing the onboarding flow, copy your `bank_account_id` from the Etherfuse dashboard into `etherfuse.json` and restart the app — the ramp forms will now appear
+6. **Sandbox only:** contact `stablebond@etherfuse.com` with your org ID (the third segment of your `api_key`) to request proxy account provisioning before placing orders
 
 Once configured:
 
