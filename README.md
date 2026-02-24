@@ -11,7 +11,7 @@ A Stellar wallet built in Python with both a command-line interface and a web UI
 - **Trustlines** — create on-chain trustlines directly from the wallet so your account can hold non-XLM assets
 - **Manage assets** — track non-XLM assets (USDC, etc.) for balance display and sending
 - **Yield vault** — deposit and withdraw USDC in a DeFindex yield vault; live APY and balance shown on the dashboard
-- **Fiat on/off ramp** — convert USD ↔ USDC via Etherfuse; on-ramp deposits USDC to your wallet, off-ramp signs an outgoing Stellar tx and credits your bank account
+- **Fiat on/off ramp** — convert MXN ↔ CETES via Etherfuse; on-ramp deposits CETES (tokenized Mexican treasury bills) to your wallet, off-ramp signs an outgoing Stellar tx and credits your bank account in MXN
 - **Testnet + Mainnet** — switch networks at any time
 - **Encrypted secret key** — your secret key is never stored in plaintext
 - **Web UI** — browser-based interface via Flask (no Node.js or build step required)
@@ -119,7 +119,7 @@ Once configured:
 
 ## Fiat Ramp (Etherfuse)
 
-The ramp feature lets you move money between USD and USDC via [Etherfuse](https://etherfuse.com). To enable it, create an `etherfuse.json` file in the project directory:
+The ramp feature lets you move money between MXN and CETES (Etherfuse tokenized Mexican treasury bills) via [Etherfuse](https://etherfuse.com). To enable it, create an `etherfuse.json` file in the project directory:
 
 ```json
 {
@@ -138,8 +138,8 @@ The ramp feature lets you move money between USD and USDC via [Etherfuse](https:
 
 Once configured:
 
-- **On-ramp** — enter a USD amount; Etherfuse handles the bank transfer and deposits USDC to your Stellar wallet. No password needed.
-- **Off-ramp** — enter a USDC amount and your wallet password; the app signs and submits an outgoing Stellar transaction, and Etherfuse credits your bank account.
+- **On-ramp** — enter an MXN amount; Etherfuse handles the bank transfer and deposits CETES to your Stellar wallet. No password needed.
+- **Off-ramp** — enter a CETES amount and your wallet password; the app signs and submits an outgoing Stellar transaction, and Etherfuse credits your bank account in MXN.
 - **Recent orders** — the ramp page shows your last 5 orders with status. Refresh to update.
 
 `etherfuse.json` is excluded from git via `.gitignore`. If the file is absent, `/ramp` redirects with a warning — no other functionality is affected.
