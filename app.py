@@ -301,6 +301,55 @@ def assets():
         elif action == "remove":
             w.remove_tracked_asset(code, issuer)
             flash(f"{code} removed from tracked assets.", "success")
+        elif action == "trustline":
+            password = request.form.get("password", "")
+            if not code or not issuer or not password:
+                flash("Asset code, issuer address, and password are all required.", "danger")
+                tracked = w.load_tracked_assets()
+                return render_template(
+                    "assets.html", tracked_assets=tracked,
+                    network=network, network_name=w.NETWORK_NAME,
+                )
+            try:
+                with open(w.WALLET_FILE) as f:
+                    data = json.load(f)
+                secret_key = w._decrypt_secret(data["encrypted_secret"], data["salt"], password)
+            except InvalidToken:
+                flash("Incorrect password.", "danger")
+                tracked = w.load_tracked_assets()
+                return render_template(
+                    "assets.html", tracked_assets=tracked,
+                    network=network, network_name=w.NETWORK_NAME,
+                )
+            except Exception as e:
+                flash(f"Error loading wallet: {e}", "danger")
+                tracked = w.load_tracked_assets()
+                return render_template(
+                    "assets.html", tracked_assets=tracked,
+                    network=network, network_name=w.NETWORK_NAME,
+                )
+            try:
+                public_key = read_public_key()
+                source_account = w.load_account_rpc(public_key)
+                transaction = (
+                    TransactionBuilder(
+                        source_account=source_account,
+                        network_passphrase=w.NETWORK_PASSPHRASE,
+                        base_fee=100,
+                    )
+                    .append_change_trust_op(asset=Asset(code, issuer))
+                    .set_timeout(30)
+                    .build()
+                )
+                transaction.sign(Keypair.from_secret(secret_key))
+                response = w.soroban_server.send_transaction(transaction)
+                if response.status == "ERROR":
+                    flash(f"Trustline failed: {response.error_result_xdr}", "danger")
+                else:
+                    w.add_tracked_asset(code, issuer)
+                    flash(f"Trustline created for {code}! Transaction hash: {response.hash}", "success")
+            except Exception as e:
+                flash(f"Error creating trustline: {e}", "danger")
 
         return redirect(url_for("assets"))
 

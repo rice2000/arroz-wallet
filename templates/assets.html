@@ -7,17 +7,56 @@
   <span class="badge network-badge-{{ network }} text-uppercase">{{ network_name }}</span>
 </div>
 
-<div class="alert alert-info small">
-  <strong>Why manual tracking?</strong>
-  Stellar RPC cannot enumerate all trustlines for an account — unlike Horizon's
-  <code>/accounts/{id}</code> endpoint. Add the assets you hold here so Arroz Wallet
-  can fetch their balances via <code>getLedgerEntries</code>.
+<!-- Create trustline form -->
+<div class="card mb-4">
+  <div class="card-header text-muted small">Create Trustline</div>
+  <div class="card-body">
+    <p class="text-muted small mb-3">
+      A trustline authorizes your account to hold a non-XLM asset on-chain.
+      Required before you can receive or hold a balance in that asset.
+      This submits a <code>ChangeTrust</code> transaction and adds the asset to your tracking list.
+    </p>
+    {% if network == 'mainnet' %}
+      <div class="alert alert-danger small py-2">
+        <strong>Mainnet:</strong> This transaction uses real XLM for the fee and reserve.
+      </div>
+    {% endif %}
+    <form method="post">
+      <input type="hidden" name="action" value="trustline">
+      <div class="row g-3 align-items-end">
+        <div class="col-sm-3">
+          <label for="tl-code" class="form-label">Asset Code</label>
+          <input type="text" class="form-control" id="tl-code" name="code"
+                 placeholder="e.g. USDC" maxlength="12" required
+                 spellcheck="false" autocomplete="off">
+        </div>
+        <div class="col-sm-5">
+          <label for="tl-issuer" class="form-label">Issuer Address</label>
+          <input type="text" class="form-control hash" id="tl-issuer" name="issuer"
+                 placeholder="G..." required
+                 spellcheck="false" autocomplete="off">
+        </div>
+        <div class="col-sm-2">
+          <label for="tl-password" class="form-label">Password</label>
+          <input type="password" class="form-control" id="tl-password" name="password"
+                 placeholder="••••••••" required autocomplete="off">
+        </div>
+        <div class="col-sm-2">
+          <button type="submit" class="btn btn-primary w-100">Create</button>
+        </div>
+      </div>
+    </form>
+  </div>
 </div>
 
-<!-- Add asset form -->
+<!-- Add to tracking list form -->
 <div class="card mb-4">
-  <div class="card-header text-muted small">Add Asset</div>
+  <div class="card-header text-muted small">Add to Tracking List</div>
   <div class="card-body">
+    <p class="text-muted small mb-3">
+      Already have a trustline for an asset? Add it here so Arroz Wallet fetches its balance.
+      Stellar RPC requires knowing each asset upfront — it cannot enumerate trustlines automatically.
+    </p>
     <form method="post">
       <input type="hidden" name="action" value="add">
       <div class="row g-3 align-items-end">
@@ -34,7 +73,7 @@
                  spellcheck="false" autocomplete="off">
         </div>
         <div class="col-sm-2">
-          <button type="submit" class="btn btn-primary w-100">Add</button>
+          <button type="submit" class="btn btn-outline-secondary w-100">Add</button>
         </div>
       </div>
     </form>
