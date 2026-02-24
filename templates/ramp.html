@@ -1,0 +1,190 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h4 class="mb-0">Fiat On/Off Ramp</h4>
+  <span class="badge network-badge-{{ network }} text-uppercase">{{ network_name }}</span>
+</div>
+
+{% if not ef_ready %}
+<!-- Setup card: shown when customer_id or bank_account_id are placeholders -->
+<div class="card mb-4">
+  <div class="card-header text-muted small">Etherfuse Setup Required</div>
+  <div class="card-body">
+    <p class="mb-2">
+      To use the ramp, you need to complete KYC and add a bank account at
+      <a href="https://devnet.etherfuse.com" target="_blank" rel="noopener">devnet.etherfuse.com</a>
+      (sandbox) or <a href="https://etherfuse.com" target="_blank" rel="noopener">etherfuse.com</a>
+      (mainnet).
+    </p>
+    <ol class="mb-3 small text-muted">
+      <li>Click "Generate onboarding link" to start KYC at Etherfuse.</li>
+      <li>Complete identity verification and add a bank account.</li>
+      <li>Copy your <strong>bank_account_id</strong> from the Etherfuse dashboard.</li>
+      <li>Paste it into <code>etherfuse.json</code> and restart the app.</li>
+    </ol>
+    <form action="/ramp/setup" method="post">
+      <button type="submit" class="btn btn-primary">Generate onboarding link</button>
+    </form>
+  </div>
+</div>
+{% else %}
+
+{% if network == 'mainnet' %}
+  <div class="alert alert-danger d-flex align-items-start gap-2">
+    <strong>Mainnet:</strong>
+    <span>You are moving real money. Double-check all amounts before submitting.</span>
+  </div>
+{% endif %}
+
+<!-- On-Ramp -->
+<div class="card mb-4">
+  <div class="card-header text-muted small">On-Ramp — Fiat → USDC</div>
+  <div class="card-body">
+    <p class="text-muted small mb-3">
+      Send USD from your bank; Etherfuse deposits USDC to your Stellar wallet.
+      No password needed — the bank transfer is handled externally.
+    </p>
+    <form method="post">
+      <input type="hidden" name="action" value="onramp">
+
+      <div class="mb-3">
+        <label for="onramp-amount" class="form-label">Amount (USD)</label>
+        <input type="number" class="form-control" id="onramp-amount" name="amount"
+               placeholder="0.00" step="0.01" min="0.01" required
+               value="{{ form_amount if form_action == 'onramp' and form_amount else '' }}">
+        {% if exchange_rates %}
+          <div class="form-text">
+            Rate: 1 USD ≈
+            {% if exchange_rates.rate is defined %}
+              {{ exchange_rates.rate }} USDC
+            {% elif exchange_rates.usdToUsdc is defined %}
+              {{ exchange_rates.usdToUsdc }} USDC
+            {% else %}
+              —
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="form-text text-muted">Exchange rate unavailable</div>
+        {% endif %}
+      </div>
+
+      <button type="submit" class="btn btn-success">Start on-ramp</button>
+    </form>
+  </div>
+</div>
+
+<!-- Off-Ramp -->
+<div class="card mb-4">
+  <div class="card-header text-muted small">Off-Ramp — USDC → Fiat</div>
+  <div class="card-body">
+    {% if network == 'mainnet' %}
+      <div class="alert alert-warning small py-2 mb-3">
+        Real USDC will be sent from your wallet. This is irreversible.
+      </div>
+    {% endif %}
+    <p class="text-muted small mb-3">
+      Send USDC from your Stellar wallet; Etherfuse deposits USD to your bank account.
+      Your wallet password is needed to sign the outgoing Stellar transaction.
+    </p>
+    <form method="post">
+      <input type="hidden" name="action" value="offramp">
+
+      <div class="mb-3">
+        <label for="offramp-amount" class="form-label">Amount (USDC)</label>
+        <input type="number" class="form-control" id="offramp-amount" name="amount"
+               placeholder="0.0000000" step="0.0000001" min="0.0000001" required
+               value="{{ form_amount if form_action == 'offramp' and form_amount else '' }}">
+        {% if exchange_rates %}
+          <div class="form-text">
+            Rate: 1 USDC ≈
+            {% if exchange_rates.rate is defined %}
+              {{ exchange_rates.rate }} USD
+            {% elif exchange_rates.usdcToUsd is defined %}
+              {{ exchange_rates.usdcToUsd }} USD
+            {% else %}
+              —
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="form-text text-muted">Exchange rate unavailable</div>
+        {% endif %}
+      </div>
+
+      <div class="mb-4">
+        <label for="offramp-password" class="form-label">Wallet Password</label>
+        <input type="password" class="form-control" id="offramp-password" name="password"
+               placeholder="Your wallet password" required autocomplete="off">
+        <div class="form-text">
+          Used to decrypt your secret key locally — never sent or stored anywhere.
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-outline-secondary">Start off-ramp</button>
+    </form>
+  </div>
+</div>
+
+<!-- Recent Orders -->
+<div class="card mb-4">
+  <div class="card-header text-muted small d-flex justify-content-between align-items-center">
+    <span>Recent Orders</span>
+    <span class="text-muted" style="font-size: .75rem;">Refresh to update status</span>
+  </div>
+  <div class="card-body p-0">
+    {% if recent_orders %}
+      <table class="table table-sm mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Order ID</th>
+            <th>Direction</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Date</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for order in recent_orders %}
+            <tr>
+              <td class="font-monospace small">
+                {{ (order.orderId or order.id or order.order_id or '')[:8] }}…
+              </td>
+              <td>
+                {% set dir = order.direction or order.type or '' %}
+                {% if dir == 'onramp' %}
+                  <span class="badge bg-success">On-ramp</span>
+                {% elif dir == 'offramp' %}
+                  <span class="badge bg-secondary">Off-ramp</span>
+                {% else %}
+                  <span class="text-muted small">{{ dir or '—' }}</span>
+                {% endif %}
+              </td>
+              <td class="font-monospace small">
+                {{ order.fiatAmount or order.tokenAmount or order.amount or '—' }}
+              </td>
+              <td>
+                <span class="badge
+                  {% if (order.status or '') == 'completed' %}bg-success
+                  {% elif (order.status or '') == 'failed' %}bg-danger
+                  {% elif (order.status or '') == 'pending' %}bg-warning text-dark
+                  {% else %}bg-secondary{% endif %}">
+                  {{ order.status or '—' }}
+                </span>
+              </td>
+              <td class="small text-muted">
+                {{ (order.createdAt or order.created_at or order.date or '')[:10] or '—' }}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <div class="p-3 text-muted small">No recent orders.</div>
+    {% endif %}
+  </div>
+</div>
+
+{% endif %}{# ef_ready #}
+
+{% endblock %}

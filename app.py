@@ -18,6 +18,7 @@ from stellar_sdk.exceptions import NotFoundError
 
 import wallet as w
 import defindex as df
+import etherfuse as ef
 
 app = Flask(__name__)
 # Secret key regenerates on each restart — sessions are lost, but that's fine
@@ -547,6 +548,220 @@ def vault():
         vault_address=df.get_vault_address(network),
         form_amount=None, form_action=None,
     )
+
+
+@app.route("/ramp", methods=["GET", "POST"])
+def ramp():
+    network = get_network_config()
+
+    if not ef.is_configured():
+        flash("Etherfuse is not configured. Add etherfuse.json to enable ramp features.", "warning")
+        return redirect(url_for("index"))
+
+    if not os.path.exists(w.WALLET_FILE):
+        flash("No wallet found. Please create one first.", "warning")
+        return redirect(url_for("create"))
+
+    # Auto-generate customer_id if still placeholder
+    ef.ensure_customer_id()
+
+    public_key = read_public_key()
+    exchange_rates = None
+    recent_orders = []
+
+    try:
+        exchange_rates = ef.get_exchange_rates()
+    except Exception:
+        pass
+
+    if ef.is_ready():
+        try:
+            recent_orders = ef.list_orders()
+        except Exception:
+            pass
+
+    if request.method == "POST":
+        action = request.form.get("action", "").strip()
+        amount = request.form.get("amount", "").strip()
+        password = request.form.get("password", "")
+
+        if action not in ("onramp", "offramp") or not amount:
+            flash("Action and amount are required.", "danger")
+            return render_template(
+                "ramp.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                exchange_rates=exchange_rates,
+                recent_orders=recent_orders,
+                ef_configured=ef.is_configured(),
+                ef_ready=ef.is_ready(),
+                form_amount=amount, form_action=action,
+            )
+
+        if action == "offramp" and not password:
+            flash("Password is required for off-ramp.", "danger")
+            return render_template(
+                "ramp.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                exchange_rates=exchange_rates,
+                recent_orders=recent_orders,
+                ef_configured=ef.is_configured(),
+                ef_ready=ef.is_ready(),
+                form_amount=amount, form_action=action,
+            )
+
+        order_id = ef.new_order_id()
+
+        try:
+            quote = ef.get_quote(action, amount, public_key)
+        except Exception as e:
+            flash(f"Quote error: {e}", "danger")
+            return render_template(
+                "ramp.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                exchange_rates=exchange_rates,
+                recent_orders=recent_orders,
+                ef_configured=ef.is_configured(),
+                ef_ready=ef.is_ready(),
+                form_amount=amount, form_action=action,
+            )
+
+        try:
+            order = ef.create_order(order_id, quote["quoteId"], action, public_key, amount)
+        except Exception as e:
+            flash(f"Order error: {e}", "danger")
+            return render_template(
+                "ramp.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                exchange_rates=exchange_rates,
+                recent_orders=recent_orders,
+                ef_configured=ef.is_configured(),
+                ef_ready=ef.is_ready(),
+                form_amount=amount, form_action=action,
+            )
+
+        if action == "offramp":
+            try:
+                if "xdr" in order:
+                    response = _sign_and_submit_xdr(order["xdr"], password, public_key)
+                    if response.status == "ERROR":
+                        flash(f"Transaction failed: {response.error_result_xdr}", "danger")
+                        return render_template(
+                            "ramp.html",
+                            network=network, network_name=w.NETWORK_NAME,
+                            public_key=public_key,
+                            exchange_rates=exchange_rates,
+                            recent_orders=recent_orders,
+                            ef_configured=ef.is_configured(),
+                            ef_ready=ef.is_ready(),
+                            form_amount=amount, form_action=action,
+                        )
+                else:
+                    deposit_address = order["depositAddress"]
+                    memo = order.get("memo")
+                    with open(w.WALLET_FILE) as f:
+                        data = json.load(f)
+                    secret_key = w._decrypt_secret(data["encrypted_secret"], data["salt"], password)
+                    source_account = w.load_account_rpc(public_key)
+                    usdc_asset = Asset(
+                        "USDC",
+                        "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+                    )
+                    builder = TransactionBuilder(
+                        source_account=source_account,
+                        network_passphrase=w.NETWORK_PASSPHRASE,
+                        base_fee=100,
+                    ).append_payment_op(
+                        destination=deposit_address,
+                        asset=usdc_asset,
+                        amount=amount,
+                    ).set_timeout(30)
+                    if memo:
+                        from stellar_sdk import TextMemo
+                        builder.add_text_memo(memo)
+                    transaction = builder.build()
+                    transaction.sign(Keypair.from_secret(secret_key))
+                    response = w.soroban_server.send_transaction(transaction)
+                    if response.status == "ERROR":
+                        flash(f"Transaction failed: {response.error_result_xdr}", "danger")
+                        return render_template(
+                            "ramp.html",
+                            network=network, network_name=w.NETWORK_NAME,
+                            public_key=public_key,
+                            exchange_rates=exchange_rates,
+                            recent_orders=recent_orders,
+                            ef_configured=ef.is_configured(),
+                            ef_ready=ef.is_ready(),
+                            form_amount=amount, form_action=action,
+                        )
+            except InvalidToken:
+                flash("Incorrect password.", "danger")
+                return render_template(
+                    "ramp.html",
+                    network=network, network_name=w.NETWORK_NAME,
+                    public_key=public_key,
+                    exchange_rates=exchange_rates,
+                    recent_orders=recent_orders,
+                    ef_configured=ef.is_configured(),
+                    ef_ready=ef.is_ready(),
+                    form_amount=amount, form_action=action,
+                )
+            except Exception as e:
+                flash(f"Error submitting transaction: {e}", "danger")
+                return render_template(
+                    "ramp.html",
+                    network=network, network_name=w.NETWORK_NAME,
+                    public_key=public_key,
+                    exchange_rates=exchange_rates,
+                    recent_orders=recent_orders,
+                    ef_configured=ef.is_configured(),
+                    ef_ready=ef.is_ready(),
+                    form_amount=amount, form_action=action,
+                )
+
+        status = order.get("status", "pending")
+        flash(f"Order created! ID: {order_id[:8]}... Status: {status}", "success")
+        return redirect(url_for("ramp"))
+
+    return render_template(
+        "ramp.html",
+        network=network, network_name=w.NETWORK_NAME,
+        public_key=public_key,
+        exchange_rates=exchange_rates,
+        recent_orders=recent_orders,
+        ef_configured=ef.is_configured(),
+        ef_ready=ef.is_ready(),
+        form_amount=None, form_action=None,
+    )
+
+
+@app.route("/ramp/setup", methods=["POST"])
+def ramp_setup():
+    get_network_config()
+
+    if not ef.is_configured():
+        flash("Etherfuse is not configured.", "warning")
+        return redirect(url_for("index"))
+
+    public_key = read_public_key()
+    if not public_key:
+        flash("No wallet found. Please create one first.", "warning")
+        return redirect(url_for("create"))
+
+    ef.ensure_customer_id()
+
+    try:
+        url = ef.get_onboarding_url(public_key)
+        if url:
+            return redirect(url)
+        flash("Could not retrieve onboarding URL from Etherfuse.", "danger")
+    except Exception as e:
+        flash(f"Onboarding URL error: {e}", "danger")
+
+    return redirect(url_for("ramp"))
 
 
 @app.route("/network", methods=["POST"])
