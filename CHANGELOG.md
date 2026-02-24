@@ -1,5 +1,47 @@
 # Changelog
 
+## Milestone 6 — Etherfuse Fiat On/Off Ramp (2026-02-24)
+
+### What was built
+
+Added fiat on/off ramp capability via the Etherfuse Ramp API. Users complete KYC and bank account setup externally at devnet.etherfuse.com (sandbox) or etherfuse.com (mainnet), then store their credentials in a local `etherfuse.json` (gitignored). The wallet provides a `/ramp` page with an on-ramp form (fiat → USDC), an off-ramp form (USDC → fiat), and a recent orders table. No webhooks, no in-app KYC.
+
+**New files**
+
+- `etherfuse.py` — self-contained API client. Loads `etherfuse.json` at import time with the same graceful-degradation pattern as `defindex.py`. Provides `is_configured()` (file present), `is_ready()` (all IDs are non-placeholder values), `get_exchange_rates()`, `get_quote()`, `create_order()`, `list_orders()`, `get_onboarding_url()`, and `ensure_customer_id()`. Auth header uses no "Bearer" prefix per Etherfuse's API convention.
+- `templates/ramp.html` — setup card (shown until `bank_account_id` is filled in) with "Generate onboarding link" button; on-ramp form (USD amount, no password); off-ramp form (USDC amount + wallet password to sign the outgoing Stellar tx); recent orders table with status badges.
+- `etherfuse.json` — API key + placeholder `customer_id`/`bank_account_id`. Added to `.gitignore`; never committed.
+
+**`app.py` changes**
+
+- `import etherfuse as ef`
+- `ramp()` — GET fetches exchange rates and recent orders (best-effort, errors silenced); POST validates action/amount/password, gets a quote, creates an order, and for off-ramp either signs a provided XDR or builds a USDC payment op to the deposit address. `InvalidToken` → "Incorrect password" flash with amount preserved.
+- `ramp_setup()` — POSTs to `/ramp/onboarding-url` and redirects the user to the Etherfuse-hosted KYC flow. On first run, `ensure_customer_id()` auto-generates a UUID and writes it back to `etherfuse.json` so the user doesn't have to.
+
+**`templates/base.html`**
+
+Ramp nav link added after Vault.
+
+### Issues discovered during testing
+
+**Exchange rates endpoint requires auth**
+
+The plan described `/ramp/exchange-rates` as a public endpoint requiring no auth. Testing showed it returns `"Authorization header not found"` without a key and `"Organization not found"` with the placeholder key. Updated `get_exchange_rates()` to send the auth header.
+
+**"Organization not found" from sandbox API**
+
+Both the exchange rates and onboarding URL endpoints returned `400 Organization not found` with the example API key from the plan. This is expected — the sandbox key is a placeholder. The flow and error handling work correctly; a real key from devnet.etherfuse.com is needed to proceed past this point.
+
+### Off-ramp transaction path
+
+Whether `create_order` returns an XDR to sign or a deposit address + memo is unconfirmed until first sandbox run with a live account. The code handles both:
+- If `"xdr" in order` → sign with `_sign_and_submit_xdr()` (reuses the DeFindex helper)
+- Else → build a USDC payment op to `order["depositAddress"]` with optional `order["memo"]`
+
+Field names will be adjusted after the first end-to-end sandbox test.
+
+---
+
 ## Milestone 5 — Trustline Creation (2026-02-24)
 
 ### What was built
