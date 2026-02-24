@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <h4 class="mb-0">DeFindex Vault</h4>
+  <span class="badge network-badge-{{ network }} text-uppercase">{{ network_name }}</span>
+</div>
+
+{% if network == 'mainnet' %}
+  <div class="alert alert-danger d-flex align-items-start gap-2">
+    <strong>Mainnet:</strong>
+    <span>You are interacting with real assets. Transactions are irreversible.</span>
+  </div>
+{% endif %}
+
+<!-- Vault stats -->
+<div class="card mb-4">
+  <div class="card-header text-muted small">Vault Stats</div>
+  <div class="card-body">
+    {% if vault_error %}
+      <span class="text-muted small">{{ vault_error }}</span>
+    {% else %}
+      <div class="row text-center g-2">
+        <div class="col-4">
+          <div class="text-muted small">APY</div>
+          <div class="fw-semibold">
+            {% if vault_info is not none and vault_info.apy is defined %}
+              {{ vault_info.apy }}%
+            {% else %}
+              —
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-4">
+          <div class="text-muted small">Your Balance (USDC)</div>
+          <div class="fw-semibold font-monospace">
+            {% if vault_balance is not none and vault_balance.underlyingBalance is defined %}
+              {{ vault_balance.underlyingBalance[0] }}
+            {% else %}
+              —
+            {% endif %}
+          </div>
+        </div>
+        <div class="col-4">
+          <div class="text-muted small">dfTokens</div>
+          <div class="fw-semibold font-monospace">
+            {% if vault_balance is not none and vault_balance.dfTokens is defined %}
+              {{ vault_balance.dfTokens }}
+            {% else %}
+              —
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Deposit -->
+<div class="card mb-4">
+  <div class="card-header text-muted small">Deposit USDC</div>
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="action" value="deposit">
+
+      <div class="mb-3">
+        <label for="deposit-amount" class="form-label">Amount (USDC)</label>
+        <input type="number" class="form-control" id="deposit-amount" name="amount"
+               placeholder="0.0000000" step="0.0000001" min="0.0000001" required
+               value="{{ form_amount if form_action == 'deposit' and form_amount else '' }}">
+      </div>
+
+      <div class="mb-4">
+        <label for="deposit-password" class="form-label">Wallet Password</label>
+        <input type="password" class="form-control" id="deposit-password" name="password"
+               placeholder="Your wallet password" required autocomplete="off">
+        <div class="form-text">
+          Used to decrypt your secret key locally — never sent or stored anywhere.
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-success">Deposit</button>
+      <a href="/" class="btn btn-link text-muted">Cancel</a>
+    </form>
+  </div>
+</div>
+
+<!-- Withdraw -->
+<div class="card mb-4">
+  <div class="card-header text-muted small">Withdraw USDC</div>
+  <div class="card-body">
+    <form method="post">
+      <input type="hidden" name="action" value="withdraw">
+
+      <div class="mb-3">
+        <label for="withdraw-amount" class="form-label">Amount (USDC)</label>
+        <input type="number" class="form-control" id="withdraw-amount" name="amount"
+               placeholder="0.0000000" step="0.0000001" min="0.0000001" required
+               value="{{ form_amount if form_action == 'withdraw' and form_amount else '' }}">
+      </div>
+
+      <div class="mb-4">
+        <label for="withdraw-password" class="form-label">Wallet Password</label>
+        <input type="password" class="form-control" id="withdraw-password" name="password"
+               placeholder="Your wallet password" required autocomplete="off">
+        <div class="form-text">
+          Used to decrypt your secret key locally — never sent or stored anywhere.
+        </div>
+      </div>
+
+      <button type="submit" class="btn btn-outline-secondary">Withdraw</button>
+      <a href="/" class="btn btn-link text-muted">Cancel</a>
+    </form>
+  </div>
+</div>
+
+<!-- Vault address footer -->
+<div class="card">
+  <div class="card-body text-muted small">
+    Vault contract: <code class="hash">{{ vault_address }}</code>
+  </div>
+</div>
+
+{% endblock %}

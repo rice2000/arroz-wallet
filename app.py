@@ -10,10 +10,14 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 from cryptography.fernet import InvalidToken
-from stellar_sdk import Keypair, Server, SorobanServer, TransactionBuilder, Asset, Account
+from stellar_sdk import (
+    Keypair, Server, SorobanServer, TransactionBuilder,
+    TransactionEnvelope, Asset, Account,
+)
 from stellar_sdk.exceptions import NotFoundError
 
 import wallet as w
+import defindex as df
 
 app = Flask(__name__)
 # Secret key regenerates on each restart — sessions are lost, but that's fine
@@ -49,6 +53,18 @@ def read_public_key():
     return data.get("public_key")
 
 
+# ─── DeFindex Helper ───────────────────────────────────────────────────────────
+
+def _sign_and_submit_xdr(unsigned_xdr, password, public_key):
+    """Decrypt wallet secret, sign the DeFindex-provided XDR, submit via RPC."""
+    with open(w.WALLET_FILE) as f:
+        data = json.load(f)
+    secret_key = w._decrypt_secret(data["encrypted_secret"], data["salt"], password)
+    te = TransactionEnvelope.from_xdr(unsigned_xdr, w.NETWORK_PASSPHRASE)
+    te.sign(Keypair.from_secret(secret_key))
+    return w.soroban_server.send_transaction(te)
+
+
 # ─── Routes ────────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -67,6 +83,17 @@ def index():
         except Exception as e:
             error = str(e)
 
+    vault_info, vault_balance, vault_error = None, None, None
+    if df.is_configured() and public_key and not not_funded:
+        try:
+            vault_info = df.get_vault_info(network)
+        except Exception as e:
+            vault_error = str(e)
+        try:
+            vault_balance = df.get_vault_balance(network, public_key)
+        except Exception as e:
+            vault_error = vault_error or str(e)
+
     return render_template(
         "index.html",
         public_key=public_key,
@@ -75,6 +102,10 @@ def index():
         not_funded=not_funded,
         network=network,
         network_name=w.NETWORK_NAME,
+        vault_info=vault_info,
+        vault_balance=vault_balance,
+        vault_error=vault_error,
+        vault_configured=df.is_configured(),
     )
 
 
@@ -344,6 +375,129 @@ def fund():
         flash(f"Could not contact Friendbot: {e}", "danger")
 
     return redirect(url_for("index"))
+
+
+@app.route("/vault", methods=["GET", "POST"])
+def vault():
+    network = get_network_config()
+
+    if not df.is_configured():
+        flash("DeFindex is not configured. Add defindex.json to enable vault features.", "warning")
+        return redirect(url_for("index"))
+
+    if not os.path.exists(w.WALLET_FILE):
+        flash("No wallet found. Please create one first.", "warning")
+        return redirect(url_for("create"))
+
+    public_key = read_public_key()
+    vault_info, vault_balance, vault_error = None, None, None
+
+    try:
+        vault_info = df.get_vault_info(network)
+    except Exception as e:
+        vault_error = str(e)
+    try:
+        vault_balance = df.get_vault_balance(network, public_key)
+    except Exception as e:
+        vault_error = vault_error or str(e)
+
+    if request.method == "POST":
+        action = request.form.get("action", "").strip()
+        amount = request.form.get("amount", "").strip()
+        password = request.form.get("password", "")
+
+        if action not in ("deposit", "withdraw") or not amount or not password:
+            flash("Action, amount, and password are all required.", "danger")
+            return render_template(
+                "vault.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                vault_info=vault_info, vault_balance=vault_balance,
+                vault_error=vault_error,
+                vault_address=df.get_vault_address(network),
+                form_amount=amount, form_action=action,
+            )
+
+        try:
+            stroops = df.decimal_to_stroops(amount)
+        except (ValueError, TypeError) as e:
+            flash(f"Invalid amount: {e}", "danger")
+            return render_template(
+                "vault.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                vault_info=vault_info, vault_balance=vault_balance,
+                vault_error=vault_error,
+                vault_address=df.get_vault_address(network),
+                form_amount=amount, form_action=action,
+            )
+
+        try:
+            if action == "deposit":
+                unsigned_xdr = df.build_deposit_xdr(network, public_key, stroops)
+            else:
+                unsigned_xdr = df.build_withdraw_xdr(network, public_key, stroops)
+        except Exception as e:
+            flash(f"DeFindex API error: {e}", "danger")
+            return render_template(
+                "vault.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                vault_info=vault_info, vault_balance=vault_balance,
+                vault_error=vault_error,
+                vault_address=df.get_vault_address(network),
+                form_amount=amount, form_action=action,
+            )
+
+        try:
+            response = _sign_and_submit_xdr(unsigned_xdr, password, public_key)
+        except InvalidToken:
+            flash("Incorrect password.", "danger")
+            return render_template(
+                "vault.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                vault_info=vault_info, vault_balance=vault_balance,
+                vault_error=vault_error,
+                vault_address=df.get_vault_address(network),
+                form_amount=amount, form_action=action,
+            )
+        except Exception as e:
+            flash(f"Error submitting transaction: {e}", "danger")
+            return render_template(
+                "vault.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                vault_info=vault_info, vault_balance=vault_balance,
+                vault_error=vault_error,
+                vault_address=df.get_vault_address(network),
+                form_amount=amount, form_action=action,
+            )
+
+        if response.status == "ERROR":
+            flash(f"Transaction failed: {response.error_result_xdr}", "danger")
+            return render_template(
+                "vault.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                vault_info=vault_info, vault_balance=vault_balance,
+                vault_error=vault_error,
+                vault_address=df.get_vault_address(network),
+                form_amount=amount, form_action=action,
+            )
+
+        flash(f"{action.capitalize()} submitted! Transaction hash: {response.hash}", "success")
+        return redirect(url_for("vault"))
+
+    return render_template(
+        "vault.html",
+        network=network, network_name=w.NETWORK_NAME,
+        public_key=public_key,
+        vault_info=vault_info, vault_balance=vault_balance,
+        vault_error=vault_error,
+        vault_address=df.get_vault_address(network),
+        form_amount=None, form_action=None,
+    )
 
 
 @app.route("/network", methods=["POST"])

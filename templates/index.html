@@ -84,6 +84,57 @@
     <a href="/history" class="btn btn-outline-secondary">Transaction History</a>
   </div>
 
+  {% if vault_configured %}
+  <div class="card mt-3">
+    <div class="card-header text-muted small d-flex justify-content-between align-items-center">
+      <span>DeFindex USDC Vault</span>
+      <a href="/vault" class="text-decoration-none small">Deposit / Withdraw</a>
+    </div>
+    <div class="card-body">
+      {% if vault_error %}
+        <span class="text-muted small">{{ vault_error }}</span>
+      {% else %}
+        <div class="row text-center g-2 mb-3">
+          <div class="col-4">
+            <div class="text-muted small">APY</div>
+            <div class="fw-semibold">
+              {% if vault_info is not none and vault_info.apy is defined %}
+                {{ vault_info.apy }}%
+              {% else %}
+                —
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="text-muted small">Your Balance</div>
+            <div class="fw-semibold font-monospace">
+              {% if vault_balance is not none and vault_balance.underlyingBalance is defined %}
+                {{ vault_balance.underlyingBalance[0] }} USDC
+              {% else %}
+                —
+              {% endif %}
+            </div>
+          </div>
+          <div class="col-4">
+            <div class="text-muted small">TVL</div>
+            <div class="fw-semibold font-monospace">
+              {% if vault_info is not none and vault_info.totalManagedFunds is defined %}
+                {{ vault_info.totalManagedFunds[0].total_amount }} USDC
+              {% else %}
+                —
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="d-flex gap-2">
+          <a href="/vault" class="btn btn-sm btn-success">Deposit</a>
+          <a href="/vault" class="btn btn-sm btn-outline-secondary">Withdraw</a>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
 {% endif %}
 
 {% endblock %}
