@@ -119,7 +119,11 @@ Once configured:
 
 ## Fiat Ramp (Etherfuse)
 
-The ramp feature lets you move money between MXN and CETES (Etherfuse tokenized Mexican treasury bills) via [Etherfuse](https://etherfuse.com). To enable it, create an `etherfuse.json` file in the project directory:
+The ramp feature lets you move money between MXN and CETES (Etherfuse tokenized Mexican treasury bills) via [Etherfuse](https://etherfuse.com). CETES are short-term Mexican government bonds tokenized on Stellar.
+
+The wallet uses `api.sand.etherfuse.com` on testnet and `api.etherfuse.com` on mainnet automatically based on the selected network.
+
+To enable the ramp, create an `etherfuse.json` file in the project directory:
 
 ```json
 {
@@ -131,10 +135,11 @@ The ramp feature lets you move money between MXN and CETES (Etherfuse tokenized 
 
 **Setup (one-time):**
 
-1. Add your `api_key` from the Etherfuse dashboard (use [devnet.etherfuse.com](https://devnet.etherfuse.com) for sandbox)
-2. Leave `customer_id` and `bank_account_id` as placeholders — the app auto-generates a `customer_id` on first run
-3. Go to `/ramp` and click **Generate onboarding link** — you'll be redirected to Etherfuse to complete KYC and add a bank account
-4. Copy your `bank_account_id` from the Etherfuse dashboard into `etherfuse.json` and restart the app
+1. Add your `api_key` from the Etherfuse dashboard — use the sandbox key for testnet ([devnet.etherfuse.com](https://devnet.etherfuse.com))
+2. Leave `customer_id` as a placeholder — the app auto-generates one on first run and writes it back to `etherfuse.json`
+3. Leave `bank_account_id` as a placeholder for now
+4. Go to `/ramp` and click **Generate onboarding link** — you'll be redirected to Etherfuse's hosted UI to accept T&C, complete KYC, and add a bank account
+5. After completing the onboarding flow, copy your `bank_account_id` from the Etherfuse dashboard into `etherfuse.json` and restart the app — the ramp forms will now appear
 
 Once configured:
 
