@@ -10,6 +10,7 @@ A Stellar wallet built in Python with both a command-line interface and a web UI
 - **Transaction history** — view your 10 most recent transactions
 - **Trustlines** — create on-chain trustlines directly from the wallet so your account can hold non-XLM assets
 - **Manage assets** — track non-XLM assets (USDC, etc.) for balance display and sending
+- **Swap** — swap CETES ↔ USDC directly on the Stellar DEX via `path_payment_strict_send`; live rates pre-fetched from Horizon, multi-hop paths supported, 1% slippage tolerance applied automatically
 - **Yield vault** — deposit and withdraw USDC in a DeFindex yield vault; live APY and balance shown on the dashboard
 - **Fiat on/off ramp** — convert MXN ↔ CETES via Etherfuse; on-ramp deposits CETES (tokenized Mexican treasury bills) to your wallet, off-ramp signs an outgoing Stellar tx and credits your bank account in MXN
 - **Testnet + Mainnet** — switch networks at any time
@@ -41,7 +42,7 @@ Then open **http://localhost:5001** in your browser.
 
 > **Note:** Port 5000 is reserved by AirPlay Receiver on macOS Monterey and later, so the web UI runs on port 5001.
 
-The web UI exposes all wallet features — dashboard, create wallet, send payments, transaction history, asset management, the yield vault, and the fiat ramp. Network selection (testnet/mainnet) is available in the navbar and applies immediately.
+The web UI exposes all wallet features — dashboard, create wallet, send payments, transaction history, asset management, CETES ↔ USDC swap, the yield vault, and the fiat ramp. Network selection (testnet/mainnet) is available in the navbar and applies immediately.
 
 #### Testnet quickstart (web)
 
@@ -83,6 +84,24 @@ Select network:
 2. Choose **Create new wallet** — you'll be offered free testnet XLM via Friendbot
 3. Use the menu to check your balance, send payments, and view history
 
+## Swap (CETES ↔ USDC)
+
+The **Swap** page (`/swap`) lets you exchange CETES and USDC directly on the Stellar DEX using `path_payment_strict_send`.
+
+- Live exchange rates are fetched from Horizon before the form renders
+- The best path returned by Horizon is used in the transaction — multi-hop routes (e.g. CETES → USDC:X → USDC:Y) are supported automatically
+- A 1% slippage tolerance is applied to `dest_min`
+- The swap is a self-trade — tokens go from your account back to your account
+
+Before swapping, your account needs trustlines for both CETES and USDC. The swap page shows both issuer addresses with a link to `/assets`.
+
+**Testnet asset issuers:**
+
+| Asset | Issuer |
+|-------|--------|
+| CETES | `GC3CW7EDYRTWQ635VDIGY6S4ZUF5L6TQ7AA4MWS7LEQDBLUSZXV7UPS4` |
+| USDC | `GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56` |
+
 ## Trustlines
 
 Before your account can hold any non-XLM asset, it must have an on-chain trustline for that asset. Go to **Assets** (`/assets`) and use the **Create Trustline** form:
@@ -90,7 +109,7 @@ Before your account can hold any non-XLM asset, it must have an on-chain trustli
 | Field | Example (USDC on testnet) |
 |-------|--------------------------|
 | Asset Code | `USDC` |
-| Issuer Address | `GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5` |
+| Issuer Address | `GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56` |
 | Password | your wallet password |
 
 On success the asset is added to your tracking list automatically and its balance appears on the dashboard. If you already have a trustline from another tool, use **Add to Tracking List** instead — no transaction required.
@@ -149,6 +168,7 @@ Once configured:
 - **On-ramp** — enter an MXN amount; Etherfuse creates an order and returns a CLABE (Mexican bank account number). Transfer that amount to the CLABE via your bank; Etherfuse then deposits CETES to your Stellar wallet. No password needed.
 - **Off-ramp** — enter a CETES amount and your wallet password; the app signs and submits a Stellar payment sending CETES back to the issuer (burning them on-chain), with the Etherfuse order ID as the transaction memo. Etherfuse detects the payment and credits MXN to your bank account.
 - **Recent orders** — the ramp page shows your last 5 orders with status. Refresh to update.
+- **Testnet: simulate bank payment** — on testnet, a yellow "Simulate bank payment" banner appears after creating an on-ramp order. Clicking it calls Etherfuse's sandbox `POST /ramp/order/fiat_received` endpoint, advancing the order to `completed` and minting CETES to your wallet without a real bank transfer.
 
 `etherfuse.json` is excluded from git via `.gitignore`. If the file is absent, `/ramp` redirects with a warning — no other functionality is affected.
 
