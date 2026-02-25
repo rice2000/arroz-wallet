@@ -1,5 +1,67 @@
 # Changelog
 
+## Milestone 7 — CETES ↔ USDC Swap + Full Loop Verified (2026-02-25)
+
+### What was built
+
+Added a CETES ↔ USDC swap page and a testnet bank payment simulator, completing the full MXN → yield → MXN loop end-to-end.
+
+**New: `/swap` page (`app.py`, `templates/swap.html`)**
+
+Two swap forms powered by Stellar's `path_payment_strict_send`:
+- **CETES → USDC** — sends CETES, receives market-determined USDC
+- **USDC → CETES** — sends USDC, receives market-determined CETES
+
+Live rates are pre-fetched from Horizon `/paths/strict-send` before the form renders. On submit, the best path from Horizon is used in the transaction (supporting multi-hop routes — the testnet route goes CETES → USDC:GBBD47 → USDC:GATALTG). A 1% slippage tolerance is applied to `dest_min`. The transaction is a self-swap (destination = sender's own address).
+
+**New: Testnet bank payment simulator (`etherfuse.py`, `app.py`, `templates/ramp.html`)**
+
+Etherfuse's sandbox provides `POST /ramp/order/fiat_received` to simulate a Mexican SPEI bank transfer arriving, advancing the order from `created` → `completed` and minting CETES to the Stellar address. The wallet exposes this as:
+- `simulate_fiat_received(order_id, network)` in `etherfuse.py`
+- `POST /ramp/simulate` route in `app.py` (testnet-only guard)
+- A yellow "Simulate bank payment" banner in `ramp.html`, shown immediately after order creation (order ID stored in Flask session) rather than waiting for `list_orders` to return the new order
+
+**Nav: Swap link added to `base.html`** between Assets and Vault.
+
+### Issues discovered and fixed
+
+**Testnet USDC issuer mismatch**
+
+The testnet DEX has CETES liquidity against `GBBD47...` (Circle testnet USDC), but the DeFindex vault was deployed against `GATALTG...` (a different USDC with no DEX presence). After confirming zero liquidity on `GATALTG...`, the user seeded a testnet market. The swap now uses `GATALTG...` to match the vault asset, routing through `GBBD47...` as an intermediate hop discovered by Horizon path-finding.
+
+**Multi-hop path not used**
+
+The initial swap implementation used `path=[]` (direct DEX only). After the vault USDC gained liquidity only via a two-hop route (CETES → USDC:GBBD47 → USDC:GATALTG), `_get_swap_rate` was refactored into `_get_swap_record` + `_path_from_record` so the Horizon-returned intermediate path is passed to `path_payment_strict_send_op`.
+
+**DeFindex deposit and withdraw returning 201**
+
+Both `POST /vault/{addr}/deposit` and `POST /vault/{addr}/withdraw` return HTTP 201 (not 200). The client was raising a `ValueError` on any non-200 response. Fixed by checking `status_code not in (200, 201)` for both endpoints.
+
+**Vault balance and TVL displayed in stroops**
+
+`underlyingBalance[0]`, `dfTokens`, and `totalManagedFunds[0].total_amount` are all returned as raw stroops integers (e.g. `6700000`). Added `/ 10000000` conversion with 7 decimal places in `vault.html` and `index.html`.
+
+**Simulate button not appearing after order creation**
+
+The `list_orders` API response has a delay — newly created orders don't appear in the list immediately. The button was attached to the list, so it never showed. Fixed by storing the order ID in the Flask session on creation and rendering a dedicated banner from session state, independent of the order list.
+
+**Etherfuse order field names differ from assumptions**
+
+The actual `list_orders` response uses `orderType` (not `direction`/`type`), `amountInFiat` (not `fiatAmount`), and `status: "created"` for new orders (not `"pending"`). Template updated to match.
+
+### Full loop confirmed working end-to-end
+
+| Step | Route | Result |
+|------|-------|--------|
+| MXN → CETES | `/ramp` on-ramp + simulate | ✅ CETES minted to wallet |
+| CETES → USDC | `/swap` | ✅ USDC:GATALTG received |
+| Deposit USDC | `/vault` | ✅ dfTokens issued |
+| Withdraw USDC | `/vault` | ✅ USDC returned |
+| USDC → CETES | `/swap` | ✅ CETES received |
+| CETES → MXN | `/ramp` off-ramp | ✅ Order submitted |
+
+---
+
 ## Milestone 6f — Off-Ramp End-to-End Confirmed (2026-02-24)
 
 ### What was fixed
