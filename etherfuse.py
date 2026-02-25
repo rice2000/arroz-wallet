@@ -171,6 +171,20 @@ def get_onboarding_url(public_key: str, network: str = "testnet") -> str:
     return resp.json().get("presigned_url", "")
 
 
+def simulate_fiat_received(order_id: str, network: str = "testnet") -> dict:
+    """POST /ramp/order/fiat_received — sandbox only. Simulates MXN bank transfer arriving,
+    progressing the order from pending → funded → completed and minting CETES."""
+    resp = requests.post(
+        f"{_base_url(network)}/ramp/order/fiat_received",
+        headers=_headers(),
+        json={"orderId": order_id},
+        timeout=15,
+    )
+    if resp.status_code not in (200, 201, 204):
+        raise ValueError(f"fiat_received returned {resp.status_code}: {resp.text}")
+    return resp.json() if resp.content else {}
+
+
 def ensure_customer_id() -> bool:
     """Auto-generate and persist a customer_id if it's still a placeholder. Returns True if changed."""
     global _cfg

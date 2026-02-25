@@ -126,6 +126,16 @@
   </div>
 </div>
 
+{% if last_onramp_order_id %}
+<div class="alert alert-warning d-flex align-items-center justify-content-between gap-3 mb-3">
+  <span>On-ramp order <code class="font-monospace">{{ last_onramp_order_id[:8] }}…</code> is pending bank payment.</span>
+  <form action="/ramp/simulate" method="post" class="d-inline flex-shrink-0">
+    <input type="hidden" name="order_id" value="{{ last_onramp_order_id }}">
+    <button type="submit" class="btn btn-warning btn-sm">Simulate bank payment</button>
+  </form>
+</div>
+{% endif %}
+
 <!-- Recent Orders -->
 <div class="card mb-4">
   <div class="card-header text-muted small d-flex justify-content-between align-items-center">
@@ -142,16 +152,18 @@
             <th>Amount</th>
             <th>Status</th>
             <th>Date</th>
+            {% if network == 'testnet' %}<th></th>{% endif %}
           </tr>
         </thead>
         <tbody>
           {% for order in recent_orders %}
+            {% set dir = order.orderType or order.direction or order.type or '' %}
+            {% set status = order.status or '' %}
+            {% set oid = order.orderId or order.id or order.order_id or '' %}
+            {% set amount = order.amountInFiat or order.fiatAmount or order.tokenAmount or order.amount or '—' %}
             <tr>
-              <td class="font-monospace small">
-                {{ (order.orderId or order.id or order.order_id or '')[:8] }}…
-              </td>
+              <td class="font-monospace small">{{ oid[:8] }}…</td>
               <td>
-                {% set dir = order.direction or order.type or '' %}
                 {% if dir == 'onramp' %}
                   <span class="badge bg-success">On-ramp</span>
                 {% elif dir == 'offramp' %}
@@ -160,21 +172,31 @@
                   <span class="text-muted small">{{ dir or '—' }}</span>
                 {% endif %}
               </td>
-              <td class="font-monospace small">
-                {{ order.fiatAmount or order.tokenAmount or order.amount or '—' }}
-              </td>
+              <td class="font-monospace small">{{ amount }}</td>
               <td>
                 <span class="badge
-                  {% if (order.status or '') == 'completed' %}bg-success
-                  {% elif (order.status or '') == 'failed' %}bg-danger
-                  {% elif (order.status or '') == 'pending' %}bg-warning text-dark
+                  {% if status == 'completed' %}bg-success
+                  {% elif status == 'failed' %}bg-danger
+                  {% elif status in ('pending', 'created', 'funded') %}bg-warning text-dark
                   {% else %}bg-secondary{% endif %}">
-                  {{ order.status or '—' }}
+                  {{ status or '—' }}
                 </span>
               </td>
               <td class="small text-muted">
                 {{ (order.createdAt or order.created_at or order.date or '')[:10] or '—' }}
               </td>
+              {% if network == 'testnet' %}
+                <td>
+                  {% if dir == 'onramp' and status in ('created', 'pending', 'funded') and oid %}
+                    <form action="/ramp/simulate" method="post" class="d-inline">
+                      <input type="hidden" name="order_id" value="{{ oid }}">
+                      <button type="submit" class="btn btn-outline-warning btn-sm">
+                        Simulate bank payment
+                      </button>
+                    </form>
+                  {% endif %}
+                </td>
+              {% endif %}
             </tr>
           {% endfor %}
         </tbody>

@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h4 class="mb-4">Swap</h4>
+
+<div class="row g-4">
+
+  <!-- CETES → USDC -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header fw-semibold">CETES → USDC</div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Rate: 1 CETES ≈
+          {% if cetes_to_usdc %}
+            {{ "%.6f"|format(cetes_to_usdc) }} USDC
+          {% else %}
+            <span class="text-danger">— (rate unavailable)</span>
+          {% endif %}
+        </p>
+
+        <form method="post">
+          <input type="hidden" name="direction" value="cetes_to_usdc">
+
+          <div class="mb-3">
+            <label class="form-label">CETES Amount</label>
+            <input type="number" class="form-control" name="amount"
+                   min="0.0000001" step="any" placeholder="e.g. 10"
+                   value="{{ form_amount if form_direction == 'cetes_to_usdc' else '' }}"
+                   required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Wallet Password</label>
+            <input type="password" class="form-control" name="password" required>
+          </div>
+
+          <p class="text-muted small">1% slippage tolerance applied.</p>
+
+          <button type="submit" class="btn btn-primary">Swap CETES → USDC</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- USDC → CETES -->
+  <div class="col-12">
+    <div class="card">
+      <div class="card-header fw-semibold">USDC → CETES</div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Rate: 1 USDC ≈
+          {% if usdc_to_cetes %}
+            {{ "%.4f"|format(usdc_to_cetes) }} CETES
+          {% else %}
+            <span class="text-danger">— (rate unavailable)</span>
+          {% endif %}
+        </p>
+
+        <form method="post">
+          <input type="hidden" name="direction" value="usdc_to_cetes">
+
+          <div class="mb-3">
+            <label class="form-label">USDC Amount</label>
+            <input type="number" class="form-control" name="amount"
+                   min="0.0000001" step="any" placeholder="e.g. 1"
+                   value="{{ form_amount if form_direction == 'usdc_to_cetes' else '' }}"
+                   required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label">Wallet Password</label>
+            <input type="password" class="form-control" name="password" required>
+          </div>
+
+          <p class="text-muted small">1% slippage tolerance applied.</p>
+
+          <button type="submit" class="btn btn-primary">Swap USDC → CETES</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Trustline setup note -->
+<div class="alert alert-info mt-4" role="alert">
+  <strong>Before swapping</strong>, your account needs trustlines for both assets.
+  Go to <a href="/assets" class="alert-link">Assets</a> to create them if you haven't already.<br>
+  <span class="small hash">
+    CETES issuer: {{ cetes_issuer }}<br>
+    USDC issuer: {{ usdc_issuer }}
+  </span>
+</div>
+
+{% endblock %}

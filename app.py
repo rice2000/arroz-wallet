@@ -26,6 +26,35 @@ app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
 
+# ─── USDC Issuer ───────────────────────────────────────────────────────────────
+
+_USDC_ISSUERS = {
+    "testnet": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    "mainnet": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
+}
+
+def _usdc_issuer(network: str) -> str:
+    return _USDC_ISSUERS.get(network, _USDC_ISSUERS["testnet"])
+
+
+# ─── Swap Rate Helper ──────────────────────────────────────────────────────────
+
+def _get_swap_rate(send_asset, dest_asset, send_amount):
+    """Query Horizon strict-send paths. Returns float dest amount or None."""
+    try:
+        result = w.server.strict_send_paths(
+            source_asset=send_asset,
+            source_amount=send_amount,
+            destination=[dest_asset],
+        ).call()
+        records = result.get("_embedded", {}).get("records", [])
+        if records:
+            return float(records[0]["destination_amount"])
+    except Exception:
+        pass
+    return None
+
+
 # ─── Network Helper ────────────────────────────────────────────────────────────
 
 def get_network_config():
@@ -724,8 +753,19 @@ def ramp():
                 )
 
         status = order.get("status", "pending")
+        if action == "onramp" and network == "testnet":
+            session["last_onramp_order_id"] = order_id
         flash(f"Order created! ID: {order_id[:8]}... Status: {status}", "success")
         return redirect(url_for("ramp"))
+
+    last_onramp_id = session.get("last_onramp_order_id") if network == "testnet" else None
+    # Clear it if it already appears as completed in the list
+    if last_onramp_id:
+        for o in recent_orders:
+            if (o.get("orderId") or o.get("id")) == last_onramp_id and o.get("status") == "completed":
+                session.pop("last_onramp_order_id", None)
+                last_onramp_id = None
+                break
 
     return render_template(
         "ramp.html",
@@ -736,7 +776,35 @@ def ramp():
         ef_configured=ef.is_configured(),
         ef_ready=ef.is_ready(),
         form_amount=None, form_action=None,
+        last_onramp_order_id=last_onramp_id,
     )
+
+
+@app.route("/ramp/simulate", methods=["POST"])
+def ramp_simulate():
+    network = get_network_config()
+
+    if network != "testnet":
+        flash("Simulate is only available on testnet.", "warning")
+        return redirect(url_for("ramp"))
+
+    if not ef.is_configured():
+        flash("Etherfuse is not configured.", "warning")
+        return redirect(url_for("index"))
+
+    order_id = request.form.get("order_id", "").strip()
+    if not order_id:
+        flash("Missing order ID.", "danger")
+        return redirect(url_for("ramp"))
+
+    try:
+        ef.simulate_fiat_received(order_id, network=network)
+        session.pop("last_onramp_order_id", None)
+        flash("Bank payment simulated — order should move to completed shortly. Refresh to see updated status.", "success")
+    except Exception as e:
+        flash(f"Simulation error: {e}", "danger")
+
+    return redirect(url_for("ramp"))
 
 
 @app.route("/ramp/setup", methods=["POST"])
@@ -764,6 +832,116 @@ def ramp_setup():
         flash(f"Onboarding URL error: {e}", "danger")
 
     return redirect(url_for("ramp"))
+
+
+@app.route("/swap", methods=["GET", "POST"])
+def swap():
+    network = get_network_config()
+
+    if not os.path.exists(w.WALLET_FILE):
+        flash("No wallet found. Please create one first.", "warning")
+        return redirect(url_for("create"))
+
+    public_key = read_public_key()
+    cetes = Asset("CETES", ef.cetes_issuer(network))
+    usdc = Asset("USDC", _usdc_issuer(network))
+
+    cetes_to_usdc = _get_swap_rate(cetes, usdc, "1")
+    usdc_to_cetes = _get_swap_rate(usdc, cetes, "1")
+
+    if request.method == "POST":
+        direction = request.form.get("direction", "").strip()
+        amount = request.form.get("amount", "").strip()
+        password = request.form.get("password", "")
+
+        def _rerender():
+            return render_template(
+                "swap.html",
+                network=network, network_name=w.NETWORK_NAME,
+                public_key=public_key,
+                cetes_to_usdc=cetes_to_usdc,
+                usdc_to_cetes=usdc_to_cetes,
+                cetes_issuer=ef.cetes_issuer(network),
+                usdc_issuer=_usdc_issuer(network),
+                form_direction=direction,
+                form_amount=amount,
+            )
+
+        if direction not in ("cetes_to_usdc", "usdc_to_cetes") or not amount or not password:
+            flash("Direction, amount, and password are all required.", "danger")
+            return _rerender()
+
+        if direction == "cetes_to_usdc":
+            send_asset, dest_asset = cetes, usdc
+            send_label, dest_label = "CETES", "USDC"
+        else:
+            send_asset, dest_asset = usdc, cetes
+            send_label, dest_label = "USDC", "CETES"
+
+        expected = _get_swap_rate(send_asset, dest_asset, amount)
+        if expected is None:
+            flash("No liquidity found for this swap.", "danger")
+            return _rerender()
+
+        dest_min = f"{float(expected) * 0.99:.7f}"
+
+        try:
+            with open(w.WALLET_FILE) as f:
+                data = json.load(f)
+            secret_key = w._decrypt_secret(data["encrypted_secret"], data["salt"], password)
+        except InvalidToken:
+            flash("Incorrect password.", "danger")
+            return _rerender()
+        except Exception as e:
+            flash(f"Error loading wallet: {e}", "danger")
+            return _rerender()
+
+        try:
+            source_account = w.load_account_rpc(public_key)
+            transaction = (
+                TransactionBuilder(
+                    source_account=source_account,
+                    network_passphrase=w.NETWORK_PASSPHRASE,
+                    base_fee=100,
+                )
+                .append_path_payment_strict_send_op(
+                    destination=public_key,
+                    send_asset=send_asset,
+                    send_amount=amount,
+                    dest_asset=dest_asset,
+                    dest_min=dest_min,
+                    path=[],
+                )
+                .set_timeout(30)
+                .build()
+            )
+            transaction.sign(Keypair.from_secret(secret_key))
+            response = w.soroban_server.send_transaction(transaction)
+        except Exception as e:
+            flash(f"Error submitting transaction: {e}", "danger")
+            return _rerender()
+
+        if response.status == "ERROR":
+            flash(f"Transaction failed: {response.error_result_xdr}", "danger")
+            return _rerender()
+
+        flash(
+            f"Swapped {amount} {send_label} → ~{float(dest_min):.4f} {dest_label} (tx pending)",
+            "success",
+        )
+        return redirect(url_for("swap"))
+
+    return render_template(
+        "swap.html",
+        network=network, network_name=w.NETWORK_NAME,
+        public_key=public_key,
+        cetes_to_usdc=cetes_to_usdc,
+        usdc_to_cetes=usdc_to_cetes,
+        cetes_issuer=ef.cetes_issuer(network),
+        usdc_issuer=_usdc_issuer(network),
+        form_direction=None,
+        form_amount=None,
+    )
 
 
 @app.route("/network", methods=["POST"])
