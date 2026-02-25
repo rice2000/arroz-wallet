@@ -84,7 +84,7 @@ def build_withdraw_xdr(network: str, public_key: str, amount_stroops: int) -> st
         json={"amounts": [amount_stroops], "caller": public_key},
         timeout=15,
     )
-    if resp.status_code != 200:
+    if resp.status_code not in (200, 201):
         raise ValueError(
             f"DeFindex /vault/{addr}/withdraw returned {resp.status_code}: {resp.text}"
         )
