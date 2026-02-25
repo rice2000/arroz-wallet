@@ -36,7 +36,7 @@
           <div class="text-muted small">Your Balance (USDC)</div>
           <div class="fw-semibold font-monospace">
             {% if vault_balance is not none and vault_balance.underlyingBalance is defined %}
-              {{ vault_balance.underlyingBalance[0] }}
+              {{ "%.7f"|format(vault_balance.underlyingBalance[0] | float / 10000000) }}
             {% else %}
               —
             {% endif %}
@@ -46,7 +46,7 @@
           <div class="text-muted small">dfTokens</div>
           <div class="fw-semibold font-monospace">
             {% if vault_balance is not none and vault_balance.dfTokens is defined %}
-              {{ vault_balance.dfTokens }}
+              {{ "%.7f"|format(vault_balance.dfTokens | float / 10000000) }}
             {% else %}
               —
             {% endif %}

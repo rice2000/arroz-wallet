@@ -109,7 +109,7 @@
             <div class="text-muted small">Your Balance</div>
             <div class="fw-semibold font-monospace">
               {% if vault_balance is not none and vault_balance.underlyingBalance is defined %}
-                {{ vault_balance.underlyingBalance[0] }} USDC
+                {{ "%.7f"|format(vault_balance.underlyingBalance[0] | float / 10000000) }} USDC
               {% else %}
                 —
               {% endif %}
@@ -119,7 +119,7 @@
             <div class="text-muted small">TVL</div>
             <div class="fw-semibold font-monospace">
               {% if vault_info is not none and vault_info.totalManagedFunds is defined %}
-                {{ vault_info.totalManagedFunds[0].total_amount }} USDC
+                {{ "%.7f"|format(vault_info.totalManagedFunds[0].total_amount | float / 10000000) }} USDC
               {% else %}
                 —
               {% endif %}

@@ -29,7 +29,8 @@ app.secret_key = os.urandom(24)
 # ─── USDC Issuer ───────────────────────────────────────────────────────────────
 
 _USDC_ISSUERS = {
-    "testnet": "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5",
+    # Must match the DeFindex vault asset (USDC:GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56)
+    "testnet": "GATALTGTWIOT6BUDBCZM3Q4OQ4BO2COLOAZ7IYSKPLC2PMSOPPGF5V56",
     "mainnet": "GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN",
 }
 
@@ -39,8 +40,8 @@ def _usdc_issuer(network: str) -> str:
 
 # ─── Swap Rate Helper ──────────────────────────────────────────────────────────
 
-def _get_swap_rate(send_asset, dest_asset, send_amount):
-    """Query Horizon strict-send paths. Returns float dest amount or None."""
+def _get_swap_record(send_asset, dest_asset, send_amount):
+    """Query Horizon strict-send paths. Returns the best path record dict or None."""
     try:
         result = w.server.strict_send_paths(
             source_asset=send_asset,
@@ -49,10 +50,29 @@ def _get_swap_rate(send_asset, dest_asset, send_amount):
         ).call()
         records = result.get("_embedded", {}).get("records", [])
         if records:
-            return float(records[0]["destination_amount"])
+            return records[0]
     except Exception:
         pass
     return None
+
+
+def _get_swap_rate(send_asset, dest_asset, send_amount):
+    """Query Horizon strict-send paths. Returns float dest amount or None."""
+    record = _get_swap_record(send_asset, dest_asset, send_amount)
+    if record:
+        return float(record["destination_amount"])
+    return None
+
+
+def _path_from_record(record):
+    """Extract intermediate Asset list from a Horizon path record."""
+    path = []
+    for hop in record.get("path", []):
+        if hop["asset_type"] == "native":
+            path.append(Asset.native())
+        else:
+            path.append(Asset(hop["asset_code"], hop["asset_issuer"]))
+    return path
 
 
 # ─── Network Helper ────────────────────────────────────────────────────────────
@@ -878,12 +898,14 @@ def swap():
             send_asset, dest_asset = usdc, cetes
             send_label, dest_label = "USDC", "CETES"
 
-        expected = _get_swap_rate(send_asset, dest_asset, amount)
-        if expected is None:
+        record = _get_swap_record(send_asset, dest_asset, amount)
+        if record is None:
             flash("No liquidity found for this swap.", "danger")
             return _rerender()
 
-        dest_min = f"{float(expected) * 0.99:.7f}"
+        expected = float(record["destination_amount"])
+        dest_min = f"{expected * 0.99:.7f}"
+        hop_path = _path_from_record(record)
 
         try:
             with open(w.WALLET_FILE) as f:
@@ -910,7 +932,7 @@ def swap():
                     send_amount=amount,
                     dest_asset=dest_asset,
                     dest_min=dest_min,
-                    path=[],
+                    path=hop_path,
                 )
                 .set_timeout(30)
                 .build()
